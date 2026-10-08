@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = ["crates/egress-core", "crates/identity-core", "crates/route-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[workspace.dependencies]
+egress-core = { path = "crates/egress-core" }
+identity-core = { path = "crates/identity-core" }
+thiserror = "2"
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

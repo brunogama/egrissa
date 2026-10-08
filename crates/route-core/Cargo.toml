@@ -1,0 +1,35 @@
+[package]
+name = "route-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+egress-core.workspace = true
+identity-core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[[test]]
+name = "m0"
+path = "../../tests/m0.rs"
+
+[[test]]
+name = "planning"
+path = "../../tests/planning.rs"
+
+[[test]]
+name = "acquisition"
+path = "../../tests/acquisition.rs"
+
+[[test]]
+name = "properties"
+path = "../../tests/properties.rs"
+
+[[test]]
+name = "recovery"
+path = "../../tests/recovery.rs"
+
+[lints]
+workspace = true
