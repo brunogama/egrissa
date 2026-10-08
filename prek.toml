@@ -21,8 +21,20 @@ id = "check-toml"
 id = "check-added-large-files"
 args = ["--maxkb=1024"]
 
+[[repos.hooks]]
+id = "detect-private-key"
+files = "^\\.env"
+
 [[repos]]
 repo = "local"
+
+[[repos.hooks]]
+id = "env-file-syntax"
+name = "env file syntax (bash -n)"
+language = "system"
+entry = "bash -n"
+files = "^\\.env"
+pass_filenames = 1
 
 [[repos.hooks]]
 id = "cargo-fmt"
