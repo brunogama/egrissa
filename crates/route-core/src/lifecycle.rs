@@ -7,7 +7,6 @@ use crate::{
 };
 use egress_core::{
     error::{AcquireError, LifecycleError, PlanningError, RecoveryError},
-    evidence::Observation,
     ids::*,
     policy::{EgressPolicy, RecoveryPolicy},
     request::{EgressRequest, IsolationRequirement},
@@ -16,6 +15,7 @@ use identity_core::{
     continuity::IdentityContinuity,
     identity::{IdentityScope, NetworkIdentity},
 };
+use observation_core::Observation;
 use std::{collections::BTreeMap, time::Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +89,17 @@ impl RouteManager {
     }
     pub fn state(&self, route: RouteId) -> Option<RouteState> {
         self.routes.get(&route).map(|route| route.state)
+    }
+    pub fn expire_routes(&mut self, now: Instant) -> Vec<RouteId> {
+        let mut expired = Vec::new();
+        for (id, allocation) in &mut self.routes {
+            let before = allocation.state;
+            allocation.expire(now);
+            if before != RouteState::Expired && allocation.state == RouteState::Expired {
+                expired.push(*id);
+            }
+        }
+        expired
     }
     pub fn observations(&self) -> &[Observation] {
         &self.observations
@@ -213,6 +224,21 @@ impl RouteManager {
     }
     /// Continuity is an explicit assessment supplied by the host, never inferred from a status code.
     /// M0 has no verifier; a production host must obtain this assessment from verification.
+    pub fn remove_terminal(&mut self, key: FeedbackKey) -> Result<(), LifecycleError> {
+        let allocation = self
+            .routes
+            .get(&key.route)
+            .ok_or(LifecycleError::StaleFeedback)?;
+        if allocation.plan.key() != key {
+            return Err(LifecycleError::StaleFeedback);
+        }
+        if !matches!(allocation.state, RouteState::Failed | RouteState::Expired) {
+            return Err(LifecycleError::InvalidTransition);
+        }
+        self.routes.remove(&key.route);
+        Ok(())
+    }
+
     pub fn recover(
         &mut self,
         context: &PlanContext<'_>,
@@ -271,6 +297,7 @@ impl RouteManager {
             .route_generation()
             .checked_add(1)
             .ok_or(LifecycleError::GenerationExhausted)?;
+
         if context.route_generation != next {
             return Err(LifecycleError::StaleFeedback.into());
         }

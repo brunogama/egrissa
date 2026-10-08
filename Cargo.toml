@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/egress-core", "crates/identity-core", "crates/route-core"]
+members = ["crates/egress-core", "crates/identity-core", "crates/route-core", "crates/observation-core", "crates/verification-core", "crates/transport-core", "crates/egress-runtime"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,12 @@ rust-version = "1.85"
 [workspace.dependencies]
 egress-core = { path = "crates/egress-core" }
 identity-core = { path = "crates/identity-core" }
+observation-core = { path = "crates/observation-core" }
+route-core = { path = "crates/route-core" }
+verification-core = { path = "crates/verification-core" }
+egress-runtime = { path = "crates/egress-runtime" }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+transport-core = { path = "crates/transport-core" }
 thiserror = "2"
 proptest = "1"
 

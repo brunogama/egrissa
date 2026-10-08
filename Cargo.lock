@@ -44,6 +44,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "egress-runtime"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "identity-core",
+ "observation-core",
+ "proptest",
+ "route-core",
+ "tokio",
+ "transport-core",
+ "verification-core",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -118,10 +132,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "observation-core"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "proptest",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "pin-project-lite"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "ppv-lite86"
@@ -237,6 +265,7 @@ version = "0.1.0"
 dependencies = [
  "egress-core",
  "identity-core",
+ "observation-core",
  "proptest",
 ]
 
@@ -321,6 +350,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio"
+version = "1.53.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+dependencies = [
+ "pin-project-lite",
+ "tokio-macros",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
+name = "transport-core"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "route-core",
+]
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,6 +389,17 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "verification-core"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "identity-core",
+ "observation-core",
+ "proptest",
+ "route-core",
+]
 
 [[package]]
 name = "wait-timeout"

@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 egress-core.workspace = true
 identity-core.workspace = true
+observation-core.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

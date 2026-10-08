@@ -1,6 +1,7 @@
 use crate::{route::RoutePlan, topology::RouteTopology};
 use egress_core::{capability::*, error::PlanningError, ids::*, policy::*, request::*};
 use identity_core::identity::NetworkIdentity;
+use observation_core::ObservationSnapshot;
 use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,13 +48,6 @@ pub struct InventorySnapshot {
     pub upstreams: Vec<UpstreamBinding>,
     pub candidates: Vec<Candidate>,
     pub credentials: Vec<CredentialLease>,
-}
-/// Already-attributed health input, never derived directly from HTTP outcomes.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ObservationSnapshot {
-    pub unavailable_endpoints: Vec<EndpointId>,
-    pub unavailable_upstreams: Vec<UpstreamBindingId>,
-    pub endpoint_cooldowns: Vec<(EndpointId, Instant)>,
 }
 pub trait CandidateChooser {
     /// Index into the nonempty, deterministically sorted best-rank group.
@@ -404,9 +398,6 @@ pub(crate) fn identity_compatible(context: &PlanContext<'_>) -> bool {
 
 pub(crate) fn validate_context(context: &PlanContext<'_>) -> Result<(), PlanningError> {
     use std::collections::BTreeSet;
-    if context.policy.verification == VerificationPolicy::RequireBeforeUse {
-        return Err(PlanningError::VerificationUnavailable);
-    }
     let inventory = context.inventory;
     if inventory
         .endpoints

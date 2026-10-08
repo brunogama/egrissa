@@ -1,0 +1,20 @@
+[package]
+name = "egress-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+egress-core.workspace = true
+identity-core.workspace = true
+observation-core.workspace = true
+route-core.workspace = true
+transport-core.workspace = true
+verification-core.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

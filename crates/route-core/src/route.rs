@@ -52,6 +52,10 @@ impl RoutePlan {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A caller-visible handle to planned state with a bounded validity interval.
+/// It is not a promise that the runtime will revoke the handle at expiry; callers
+/// must check `plan.expires_at()` before starting new work and tolerate the route
+/// becoming unavailable independently of the lease value.
 pub struct RouteLease {
     pub plan: RoutePlan,
 }

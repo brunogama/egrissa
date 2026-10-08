@@ -3,6 +3,7 @@ use identity_core::{
     identity::{IdentityScope, NetworkIdentity},
     lifecycle::IdentityState,
 };
+pub use observation_core::ObservationSnapshot;
 use route_core::{planner::*, topology::RouteTopology};
 use std::time::{Duration, Instant};
 

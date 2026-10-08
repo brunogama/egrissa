@@ -1,10 +1,11 @@
 mod support;
-use egress_core::{capability::*, error::*, evidence::*, ids::*, policy::*, request::*};
+use egress_core::{capability::*, error::*, ids::*, policy::*, request::*};
 use identity_core::{
     continuity::IdentityContinuity,
     identity::{IdentityScope, NetworkIdentity},
     lifecycle::IdentityState,
 };
+use observation_core::*;
 use proptest::prelude::*;
 use route_core::{lifecycle::*, planner::*, topology::RouteTopology};
 use std::time::{Duration, Instant};

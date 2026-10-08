@@ -160,7 +160,7 @@ fn route_replacement_changes_only_the_route_generation_and_rejects_old_feedback(
 }
 #[test]
 fn observations_do_not_become_establishment_health_or_verification() {
-    use egress_core::evidence::*;
+    use observation_core::*;
     let now = Instant::now();
     let req = request();
     let policy = EgressPolicy::default();
