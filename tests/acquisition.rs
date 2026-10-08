@@ -232,3 +232,104 @@ fn expired_routes_and_changed_inventory_are_not_reused() {
     ));
     assert_eq!(manager.state(plan.id()), Some(RouteState::Expired));
 }
+
+/// Stale or skipped identity generations cannot authorize recovery, and a rejected recovery
+/// leaves the current route state and retry budget untouched.
+#[test]
+fn stale_or_ahead_identity_generations_cannot_mutate_the_route() {
+    use identity_core::{continuity::IdentityContinuity, lifecycle::IdentityState};
+    let now = Instant::now();
+    let req = request();
+    let policy = EgressPolicy {
+        recovery: RecoveryPolicy::ReplanAllowingIdentityChange,
+        ..Default::default()
+    };
+    let mut id = identity(now);
+    let mut spare = id.clone();
+    let inv = inventory(now);
+    let health = ObservationSnapshot::default();
+    let mut manager = RouteManager::default();
+    let AcquireDecision::Establish(old) = manager.acquire(
+        &context(&req, &policy, &id, &inv, &health, now),
+        &mut FirstCandidate,
+    ) else {
+        panic!("expected establishment");
+    };
+    manager
+        .complete(old.key(), EstablishmentResult::Failed, now)
+        .unwrap();
+    let intermediate = id
+        .replace(
+            policy.recovery,
+            NetworkIdentityId(2),
+            IdentityContinuity::Unknown,
+            now,
+            None,
+        )
+        .unwrap();
+    let mut ahead = intermediate.new;
+    ahead
+        .transition(ahead.id(), ahead.generation(), IdentityState::Active, now)
+        .unwrap();
+    let beyond = ahead
+        .replace(
+            policy.recovery,
+            NetworkIdentityId(3),
+            IdentityContinuity::Unknown,
+            now,
+            None,
+        )
+        .unwrap();
+    let mut ahead = beyond.new;
+    ahead
+        .transition(ahead.id(), ahead.generation(), IdentityState::Active, now)
+        .unwrap();
+    assert_eq!(ahead.generation(), 2);
+    let spare_replacement = spare
+        .replace(
+            policy.recovery,
+            NetworkIdentityId(2),
+            IdentityContinuity::Unknown,
+            now,
+            None,
+        )
+        .unwrap();
+    let mut next = spare_replacement.new;
+    next.transition(next.id(), next.generation(), IdentityState::Active, now)
+        .unwrap();
+    assert_eq!(next.generation(), 1);
+    let mut ahead_context = context(&req, &policy, &ahead, &inv, &health, now);
+    ahead_context.route_generation = 1;
+    assert_eq!(
+        manager.recover(
+            &ahead_context,
+            IdentityContinuity::Unknown,
+            &mut FirstCandidate
+        ),
+        ReplacementDecision::Reject(RecoveryError::Lifecycle(LifecycleError::StaleFeedback))
+    );
+    assert_eq!(manager.state(old.id()), Some(RouteState::Failed));
+    let mut unknown_route = context(&req, &policy, &next, &inv, &health, now);
+    unknown_route.route = RouteId(99);
+    unknown_route.route_generation = 1;
+    assert_eq!(
+        manager.recover(
+            &unknown_route,
+            IdentityContinuity::Unknown,
+            &mut FirstCandidate
+        ),
+        ReplacementDecision::Reject(RecoveryError::Lifecycle(LifecycleError::StaleFeedback))
+    );
+    assert_eq!(manager.state(old.id()), Some(RouteState::Failed));
+    let mut legitimate = context(&req, &policy, &next, &inv, &health, now);
+    legitimate.route_generation = 1;
+    assert!(matches!(
+        manager.recover(
+            &legitimate,
+            IdentityContinuity::Unknown,
+            &mut FirstCandidate
+        ),
+        ReplacementDecision::ReplaceIdentity { .. }
+    ));
+    assert_eq!(manager.state(old.id()), Some(RouteState::Establishing));
+}

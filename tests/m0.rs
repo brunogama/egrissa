@@ -75,3 +75,36 @@ fn planner_rejects_unsupported_topology_and_ineligible_dependencies() {
         );
     }
 }
+
+/// `ProhibitDirect` is the default leakage policy and no direct topology is representable,
+/// so an unplannable request must also fail closed at the manager boundary.
+#[test]
+fn prohibit_direct_leakage_never_falls_back_at_acquisition() {
+    use route_core::lifecycle::{AcquireDecision, RouteManager};
+    let now = Instant::now();
+    let req = request();
+    let id = identity(now);
+    let health = ObservationSnapshot::default();
+    assert_eq!(
+        EgressPolicy::default().leakage,
+        LeakagePolicy::ProhibitDirect
+    );
+    let mut inventory = inventory(now);
+    inventory.candidates.clear();
+    for leakage in [LeakagePolicy::ProhibitDirect, LeakagePolicy::AllowDirect] {
+        let policy = EgressPolicy {
+            leakage,
+            ..Default::default()
+        };
+        let mut manager = RouteManager::default();
+        assert_eq!(
+            manager.acquire(
+                &context(&req, &policy, &id, &inventory, &health, now),
+                &mut FirstCandidate
+            ),
+            AcquireDecision::Reject(AcquireError::Planning(PlanningError::NoEligibleCandidate)),
+            "{leakage:?}"
+        );
+        assert_eq!(manager.state(RouteId(1)), None, "{leakage:?}");
+    }
+}
