@@ -160,6 +160,15 @@ pub struct EgressRuntime<T, C> {
     inner: Arc<RuntimeInner<T, C>>,
 }
 
+fn failure_observation_outcome(failure: TransportFailure) -> Outcome {
+    match failure {
+        TransportFailure::ConnectTimeout => Outcome::ConnectTimeout,
+        TransportFailure::ConnectionReset => Outcome::ConnectionReset,
+        TransportFailure::AuthenticationRejected => Outcome::AuthenticationRejected,
+        TransportFailure::UnsupportedTopology => Outcome::UnsupportedTopology,
+    }
+}
+
 impl<T: Transport, C: Clock> Clone for EgressRuntime<T, C> {
     fn clone(&self) -> Self {
         Self {
@@ -317,22 +326,19 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                 })
                 .await;
             let now = self.inner.clock.now();
-            let outcome = match result {
-                TransportOutcome::Established => Outcome::Established,
-                TransportOutcome::Failed(TransportFailure::ConnectTimeout) => {
-                    Outcome::ConnectTimeout
+            let (outcome, terminal_failure) = match result {
+                TransportOutcome::Established => (Outcome::Established, None),
+                TransportOutcome::EstablishedThenFailed(failure) => {
+                    (Outcome::Established, Some(failure))
                 }
-                TransportOutcome::Failed(TransportFailure::ConnectionReset) => {
-                    Outcome::ConnectionReset
-                }
-                TransportOutcome::Failed(TransportFailure::AuthenticationRejected) => {
-                    Outcome::AuthenticationRejected
-                }
-                TransportOutcome::Failed(TransportFailure::UnsupportedTopology) => {
-                    Outcome::UnsupportedTopology
+                TransportOutcome::Failed(failure) => {
+                    (failure_observation_outcome(failure), Some(failure))
                 }
             };
             let observation = self.observation(key, &plan, outcome, now);
+            let failure_observation = terminal_failure.map(|failure| {
+                self.observation(key, &plan, failure_observation_outcome(failure), now)
+            });
             let complete = {
                 let mut control = self
                     .inner
@@ -357,6 +363,27 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                             .events
                             .push(RuntimeEvent::EstablishmentSucceeded { key });
                         EstablishmentResult::Established
+                    }
+                    TransportOutcome::EstablishedThenFailed(failure) => {
+                        control
+                            .events
+                            .push(RuntimeEvent::EstablishmentSucceeded { key });
+                        let failed = failure_observation.expect("terminal failure has observation");
+                        if let Err(error) = control.manager.record_observation(failed.clone()) {
+                            self.settle_locked(
+                                &mut control,
+                                key,
+                                Err(RuntimeError::Lifecycle(error)),
+                            );
+                            return;
+                        }
+                        control
+                            .events
+                            .push(RuntimeEvent::ObservationRecorded { id: failed.id, key });
+                        control
+                            .events
+                            .push(RuntimeEvent::EstablishmentFailed { key, failure });
+                        EstablishmentResult::Failed
                     }
                     TransportOutcome::Failed(failure) => {
                         control
@@ -416,6 +443,37 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                         Err(error) => self.settle_locked(&mut control, key, Err(error)),
                     }
                     return;
+                }
+                TransportOutcome::EstablishedThenFailed(failure) => {
+                    if let Err(error) = self.record_egress_observations(&plan, &context) {
+                        let mut control = self
+                            .inner
+                            .control
+                            .lock()
+                            .expect("control plane mutex poisoned");
+                        self.settle_locked(&mut control, key, Err(error));
+                        return;
+                    }
+                    match self.recover_plan(&plan, context) {
+                        Some((replacement, next_context)) => {
+                            plan = replacement;
+                            context = next_context;
+                        }
+                        None => {
+                            let mut control = self
+                                .inner
+                                .control
+                                .lock()
+                                .expect("control plane mutex poisoned");
+                            let _ = control.manager.remove_terminal(key);
+                            self.settle_locked(
+                                &mut control,
+                                key,
+                                Err(RuntimeError::Establishment(failure)),
+                            );
+                            return;
+                        }
+                    }
                 }
                 TransportOutcome::Failed(failure) => match self.recover_plan(&plan, context) {
                     Some((replacement, next_context)) => {

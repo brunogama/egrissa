@@ -22,7 +22,6 @@ struct State {
     script: VecDeque<ScriptedStep>,
     establishments: Vec<FeedbackKey>,
     waiting: usize,
-    session_failures: Vec<(FeedbackKey, TransportFailure)>,
 }
 
 struct Inner {
@@ -68,17 +67,6 @@ impl FakeTransport {
             .expect("fake transport mutex poisoned")
             .waiting
     }
-
-    pub fn pending_session_failures(&self) -> Vec<(FeedbackKey, TransportFailure)> {
-        std::mem::take(
-            &mut self
-                .inner
-                .state
-                .lock()
-                .expect("fake transport mutex poisoned")
-                .session_failures,
-        )
-    }
 }
 
 impl Transport for FakeTransport {
@@ -120,13 +108,7 @@ impl Transport for FakeTransport {
                 ScriptedStep::Succeed => TransportOutcome::Established,
                 ScriptedStep::Fail(failure) => TransportOutcome::Failed(failure),
                 ScriptedStep::SucceedThenFail(failure) => {
-                    fake.inner
-                        .state
-                        .lock()
-                        .expect("fake transport mutex poisoned")
-                        .session_failures
-                        .push((key, failure));
-                    TransportOutcome::Established
+                    TransportOutcome::EstablishedThenFailed(failure)
                 }
                 ScriptedStep::AwaitRelease(_) => unreachable!(),
             }

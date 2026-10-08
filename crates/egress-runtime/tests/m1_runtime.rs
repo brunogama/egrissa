@@ -521,20 +521,35 @@ async fn m1_21_fake_script_is_reproducible() {
 }
 
 #[tokio::test]
-async fn fake_establish_then_fail_reports_a_session_failure_separately() {
+async fn fake_establish_then_fail_drives_observation_and_recovery() {
     let now = Instant::now();
-    let fake = FakeTransport::new([ScriptedStep::SucceedThenFail(
-        TransportFailure::ConnectionReset,
-    )]);
+    let mut input = context(now);
+    input.policy.recovery = RecoveryPolicy::ReplanAllowingIdentityChange;
+    let fake = FakeTransport::new([
+        ScriptedStep::SucceedThenFail(TransportFailure::ConnectionReset),
+        ScriptedStep::Succeed,
+    ]);
     let runtime = EgressRuntime::new(fake.clone(), TestClock(now));
-    let lease = runtime.acquire(context(now)).await.unwrap();
-    assert_eq!(
-        runtime.state(RouteId(1)),
-        Some(route_core::lifecycle::RouteState::Ready)
+    let lease = runtime.acquire(input).await.unwrap();
+    assert_eq!(lease.lease.plan.identity_generation(), 1);
+    assert_eq!(fake.establishments().len(), 2);
+    assert!(
+        runtime
+            .observations()
+            .iter()
+            .any(|observation| observation.outcome == Outcome::Established)
     );
-    assert_eq!(
-        fake.pending_session_failures(),
-        vec![(lease.lease.plan.key(), TransportFailure::ConnectionReset)]
+    assert!(
+        runtime
+            .observations()
+            .iter()
+            .any(|observation| observation.outcome == Outcome::ConnectionReset)
+    );
+    assert!(
+        runtime
+            .events()
+            .iter()
+            .any(|event| matches!(event, RuntimeEvent::RecoveryStarted { .. }))
     );
 }
 

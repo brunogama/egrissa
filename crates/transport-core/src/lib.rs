@@ -22,6 +22,7 @@ pub enum TransportFailure {
 pub enum TransportOutcome {
     Established,
     Failed(TransportFailure),
+    EstablishedThenFailed(TransportFailure),
 }
 
 pub type EstablishmentFuture = Pin<Box<dyn Future<Output = TransportOutcome> + Send + 'static>>;
