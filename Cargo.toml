@@ -10,6 +10,7 @@ members = [
     "crates/socks5-adapter",
     "crates/http-connect-adapter",
     "crates/relay-adapter",
+    "crates/masque-adapter",
 ]
 resolver = "3"
 
@@ -30,6 +31,7 @@ http-connect-adapter = { path = "crates/http-connect-adapter" }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
 transport-core = { path = "crates/transport-core" }
 relay-adapter = { path = "crates/relay-adapter" }
+masque-adapter = { path = "crates/masque-adapter" }
 thiserror = "2"
 proptest = "1"
 

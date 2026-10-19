@@ -262,10 +262,19 @@ impl DeterministicPlanner {
                         .iter()
                         .all(|caps| caps.transport.supports(transport))
                     && kinds.iter().enumerate().all(|(index, &kind)| match kind {
-                        TopologyKind::HttpConnect => {
-                            transport == Transport::Tcp
-                                && capabilities[index].transport.http_connect
-                        }
+                        TopologyKind::HttpConnect => match transport {
+                            Transport::Tcp => capabilities[index].transport.http_connect,
+                            Transport::Udp => {
+                                capabilities[index].transport.connect_udp
+                                    && (capabilities[index].transport.http3
+                                        || capabilities[index].transport.http2)
+                            }
+                            Transport::Ip => {
+                                capabilities[index].transport.connect_ip
+                                    && (capabilities[index].transport.http3
+                                        || capabilities[index].transport.http2)
+                            }
+                        },
                         TopologyKind::Socks5 => transport != Transport::Ip,
                         TopologyKind::Relay
                         | TopologyKind::RelayThenSocks5

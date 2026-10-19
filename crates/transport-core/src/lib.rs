@@ -50,3 +50,43 @@ pub trait Transport: Send + Sync + 'static {
 pub trait TunnelTransport: Send + Sync + 'static {
     fn establish_tunnel(&self, request: EstablishmentRequest) -> TunnelEstablishmentFuture;
 }
+
+/// An adapter-owned connection that preserves datagram boundaries.
+pub trait DatagramTunnel: Send + 'static {
+    fn send(&mut self, datagram: Vec<u8>) -> TunnelWriteFuture<'_>;
+    fn receive(&mut self, maximum: usize) -> TunnelReadFuture<'_>;
+    fn close(self: Box<Self>) -> TunnelCloseFuture;
+}
+
+/// An adapter-owned connection that preserves IP packet boundaries.
+pub trait PacketTunnel: Send + 'static {
+    fn send(&mut self, packet: Vec<u8>) -> TunnelWriteFuture<'_>;
+    fn receive(&mut self, maximum: usize) -> TunnelReadFuture<'_>;
+    fn close(self: Box<Self>) -> TunnelCloseFuture;
+}
+
+/// A data plane selected by the transport requirement in an established route plan.
+pub enum DataPlaneTunnel {
+    Datagram(Box<dyn DatagramTunnel>),
+    Packet(Box<dyn PacketTunnel>),
+}
+
+/// A successful data-plane establishment and the adapter-specific protocol selection.
+pub struct DataPlaneEstablishment<N> {
+    pub tunnel: DataPlaneTunnel,
+    pub negotiation: N,
+}
+
+pub type DataPlaneEstablishmentFuture<N> = Pin<
+    Box<dyn Future<Output = Result<DataPlaneEstablishment<N>, TransportFailure>> + Send + 'static>,
+>;
+
+/// A transport that yields a datagram or packet data plane after establishment.
+pub trait DataPlaneTransport: Send + Sync + 'static {
+    type Negotiation: Send + 'static;
+
+    fn establish_data_plane(
+        &self,
+        request: EstablishmentRequest,
+    ) -> DataPlaneEstablishmentFuture<Self::Negotiation>;
+}

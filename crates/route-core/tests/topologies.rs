@@ -175,3 +175,88 @@ fn relay_planning_rejects_same_operator_hops_when_separation_is_required() {
             .is_err()
     );
 }
+
+#[test]
+fn http_connect_udp_requires_connect_udp_and_an_explicit_http_version() {
+    let now = Instant::now();
+    let mut request = request();
+    request.transport = egress_core::request::TransportRequirement::Udp;
+    let policy = EgressPolicy::default();
+    let identity = identity(now);
+    let health = ObservationSnapshot::default();
+    let mut inventory = inventory(now);
+    let endpoint = &mut inventory.endpoints[0];
+    endpoint.capabilities.topology.supported = vec![TopologyKind::HttpConnect];
+    endpoint.capabilities.transport.connect_udp = true;
+    endpoint.capabilities.transport.http3 = true;
+    inventory.candidates = vec![Candidate {
+        topology: RouteTopology::HttpConnect {
+            proxy: EndpointId(1),
+        },
+        rank: 0,
+    }];
+
+    assert_eq!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&request, &policy, &identity, &inventory, &health, now),
+                &mut FirstCandidate,
+            )
+            .unwrap()
+            .transport(),
+        egress_core::request::Transport::Udp
+    );
+
+    inventory.endpoints[0].capabilities.transport.connect_udp = false;
+    assert!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&request, &policy, &identity, &inventory, &health, now),
+                &mut FirstCandidate,
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn http_connect_ip_requires_connect_ip_and_an_explicit_http_version() {
+    let now = Instant::now();
+    let mut request = request();
+    request.transport = egress_core::request::TransportRequirement::Ip;
+    let policy = EgressPolicy::default();
+    let identity = identity(now);
+    let health = ObservationSnapshot::default();
+    let mut inventory = inventory(now);
+    let endpoint = &mut inventory.endpoints[0];
+    endpoint.capabilities.transport.ip = true;
+    endpoint.capabilities.topology.supported = vec![TopologyKind::HttpConnect];
+    endpoint.capabilities.transport.connect_ip = true;
+    endpoint.capabilities.transport.http2 = true;
+    inventory.candidates = vec![Candidate {
+        topology: RouteTopology::HttpConnect {
+            proxy: EndpointId(1),
+        },
+        rank: 0,
+    }];
+
+    assert_eq!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&request, &policy, &identity, &inventory, &health, now),
+                &mut FirstCandidate,
+            )
+            .unwrap()
+            .transport(),
+        egress_core::request::Transport::Ip
+    );
+
+    inventory.endpoints[0].capabilities.transport.connect_ip = false;
+    assert!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&request, &policy, &identity, &inventory, &health, now),
+                &mut FirstCandidate,
+            )
+            .is_err()
+    );
+}
