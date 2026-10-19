@@ -1,0 +1,71 @@
+---
+name: Pull request policy
+
+"on":
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commits:
+    name: Conventional commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit subjects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|test)'
+          pattern+="(\\([a-z0-9][a-z0-9._/-]*\\))?!?: .+"
+          git log --format='%s' "$BASE_SHA..$HEAD_SHA" |
+            while IFS= read -r subject; do
+            if ! printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+              printf 'Invalid Conventional Commit subject: %s\n' "$subject" >&2
+              exit 1
+            fi
+          done
+
+  owner-only:
+    name: Repository-owner pull requests only
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.user.login != github.repository_owner
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Close unauthorized pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          REJECTION_MESSAGE: >-
+            This repository accepts pull requests only from its owner.
+        run: |
+          gh pr close "$PR_NUMBER" --repo "$REPOSITORY" \
+            --comment "$REJECTION_MESSAGE"
+          exit 1
