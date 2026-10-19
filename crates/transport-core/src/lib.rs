@@ -2,7 +2,7 @@
 
 use egress_core::{ids::FeedbackKey, request::Destination};
 use route_core::route::RoutePlan;
-use std::{future::Future, pin::Pin};
+use std::{future::Future, io, pin::Pin};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EstablishmentRequest {
@@ -27,8 +27,26 @@ pub enum TransportOutcome {
 
 pub type EstablishmentFuture = Pin<Box<dyn Future<Output = TransportOutcome> + Send + 'static>>;
 pub type CloseFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+pub type TunnelReadFuture<'a> = Pin<Box<dyn Future<Output = io::Result<Vec<u8>>> + Send + 'a>>;
+pub type TunnelWriteFuture<'a> = Pin<Box<dyn Future<Output = io::Result<usize>> + Send + 'a>>;
+pub type TunnelCloseFuture = Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'static>>;
+
+/// An adapter-owned, established data-plane tunnel.
+pub trait Tunnel: Send + 'static {
+    fn read(&mut self, maximum: usize) -> TunnelReadFuture<'_>;
+    fn write(&mut self, bytes: Vec<u8>) -> TunnelWriteFuture<'_>;
+    fn close(self: Box<Self>) -> TunnelCloseFuture;
+}
+
+pub type TunnelEstablishmentFuture =
+    Pin<Box<dyn Future<Output = Result<Box<dyn Tunnel>, TransportFailure>> + Send + 'static>>;
 
 pub trait Transport: Send + Sync + 'static {
     fn establish(&self, request: EstablishmentRequest) -> EstablishmentFuture;
     fn close(&self, key: FeedbackKey) -> CloseFuture;
+}
+
+/// A transport that yields an adapter-owned tunnel after establishment.
+pub trait TunnelTransport: Send + Sync + 'static {
+    fn establish_tunnel(&self, request: EstablishmentRequest) -> TunnelEstablishmentFuture;
 }

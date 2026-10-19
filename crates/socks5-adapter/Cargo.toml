@@ -1,0 +1,18 @@
+[package]
+name = "socks5-adapter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+egress-core.workspace = true
+route-core.workspace = true
+transport-core.workspace = true
+tokio = { workspace = true, features = ["io-util", "net"] }
+
+[dev-dependencies]
+identity-core.workspace = true
+observation-core.workspace = true
+
+[lints]
+workspace = true
