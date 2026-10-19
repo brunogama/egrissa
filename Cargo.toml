@@ -13,6 +13,7 @@ members = [
     "crates/masque-adapter",
     "crates/provider-core",
     "crates/reference-provider-adapter",
+    "crates/egrissa-cli",
 ]
 resolver = "3"
 
@@ -37,6 +38,7 @@ relay-adapter = { path = "crates/relay-adapter", version = "0.1.0" }
 masque-adapter = { path = "crates/masque-adapter", version = "0.1.0" }
 provider-core = { path = "crates/provider-core", version = "0.1.0" }
 reference-provider-adapter = { path = "crates/reference-provider-adapter", version = "0.1.0" }
+egrissa-cli = { path = "crates/egrissa-cli", version = "0.1.0" }
 thiserror = "2"
 proptest = "1"
 

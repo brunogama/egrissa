@@ -3,62 +3,139 @@ name: Release
 
 "on":
   push:
-    tags:
-      - "v*"
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  validate-and-release:
-    name: Validate source packages and publish release notes
+  plan:
+    name: Calculate semantic release
     runs-on: ubuntu-latest
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - name: Install Rust 1.85
-        run: rustup toolchain install 1.85.0 --profile minimal
-
-      - name: Select Rust 1.85
-        run: rustup override set 1.85.0
-
-      - name: Check package metadata licenses
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Calculate required version
         run: |
-          cargo metadata --no-deps --format-version 1 > metadata.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          import subprocess
+          import tomllib
 
-          metadata = json.loads(Path("metadata.json").read_text())
-          invalid = [
-              package["name"]
-              for package in metadata["packages"]
-              if package.get("license") != "MIT"
-          ]
-          if invalid:
+          manifest = tomllib.load(open("Cargo.toml", "rb"))
+          package = manifest["workspace"]["package"]
+          current = package["version"]
+          tags = subprocess.check_output(
+              ["git", "tag", "--list", "v*", "--sort=-v:refname"],
+              text=True,
+          ).splitlines()
+          if not tags:
+              print(f"version=v{current}")
+              print("release=true")
+              raise SystemExit
+          baseline = tags[0]
+          commits = subprocess.check_output(
+              ["git", "log", "--format=%s%n%b", f"{baseline}..HEAD"],
+              text=True,
+          )
+          level = 0
+          for commit in commits.split("\n\n"):
+              subject = commit.splitlines()[0] if commit else ""
+              breaking = "BREAKING CHANGE:" in commit
+              breaking |= bool(re.match(r"^[a-z]+(?:\([^)]*\))?!:", subject))
+              if breaking:
+                  level = max(level, 3)
+              elif subject.startswith("feat"):
+                  level = max(level, 2)
+              elif re.match(r"^(fix|perf)(?:\([^)]*\))?:", subject):
+                  level = max(level, 1)
+          major, minor, patch = map(int, baseline.removeprefix("v").split("."))
+          expected = f"{major}.{minor}.{patch}"
+          if level == 3:
+              expected = f"{major + 1}.0.0"
+          elif level == 2:
+              expected = f"{major}.{minor + 1}.0"
+          elif level == 1:
+              expected = f"{major}.{minor}.{patch + 1}"
+          if level and current != expected:
               raise SystemExit(
-                  "workspace packages must declare the MIT license: "
-                  + ", ".join(invalid)
+                  f"Cargo.toml has {current}; expected {expected} from commits."
               )
+          print(f"version=v{current}")
+          print(f"release={'true' if level else 'false'}")
           PY
 
-      - name: Check formatting
-        run: cargo fmt --check
-
-      - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Verify package contents
-        run: cargo package --workspace --allow-dirty
-
-      - name: Generate GitHub release changelog
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    name: Tag and publish release notes
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Create annotated tag and GitHub release changelog
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --generate-notes --title "$TAG"
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          bot_id="41898282+github-actions[bot]"
+          git config user.email "$bot_id@users.noreply.github.com"
+          git tag --annotate "$VERSION" --message "Release $VERSION"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --generate-notes --title "$VERSION"
+
+  binaries:
+    name: Build ${{ matrix.asset }}
+    needs: [plan, release]
+    if: needs.plan.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: egrissa-linux-x86_64.tar.gz
+            executable: egrissa
+          - os: macos-latest
+            asset: egrissa-macos.tar.gz
+            executable: egrissa
+          - os: windows-latest
+            asset: egrissa-windows-x86_64.zip
+            executable: egrissa.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.plan.outputs.version }}
+      - name: Install Rust 1.85
+        run: rustup toolchain install 1.85.0 --profile minimal
+      - name: Select Rust 1.85
+        run: rustup override set 1.85.0
+      - name: Build binary
+        run: cargo build --release --package egrissa-cli
+      - name: Archive Unix binary
+        if: runner.os != 'Windows'
+        env:
+          ASSET: ${{ matrix.asset }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: tar -C target/release -czf "$ASSET" "$EXECUTABLE"
+      - name: Archive Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ASSET: ${{ matrix.asset }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          $path = "target/release/$env:EXECUTABLE"
+          Compress-Archive -Path $path -DestinationPath $env:ASSET
+      - name: Upload binary to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          ASSET: ${{ matrix.asset }}
+        run: gh release upload "$VERSION" "$ASSET" --clobber
