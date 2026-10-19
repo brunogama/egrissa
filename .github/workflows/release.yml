@@ -1,0 +1,54 @@
+name: Release validation
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate source packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.85
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check package metadata licenses
+        run: |
+          cargo metadata --no-deps --format-version 1 > metadata.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata = json.loads(Path("metadata.json").read_text())
+          invalid = [
+              package["name"]
+              for package in metadata["packages"]
+              if package.get("license") != "MIT"
+          ]
+          if invalid:
+              raise SystemExit(
+                  "workspace packages must declare the MIT license: "
+                  + ", ".join(invalid)
+              )
+          PY
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Verify package contents
+        run: cargo package --workspace --allow-dirty

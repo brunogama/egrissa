@@ -20,22 +20,23 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+license = "MIT"
 
 [workspace.dependencies]
-egress-core = { path = "crates/egress-core" }
-identity-core = { path = "crates/identity-core" }
-observation-core = { path = "crates/observation-core" }
-route-core = { path = "crates/route-core" }
-verification-core = { path = "crates/verification-core" }
-egress-runtime = { path = "crates/egress-runtime" }
-socks5-adapter = { path = "crates/socks5-adapter" }
-http-connect-adapter = { path = "crates/http-connect-adapter" }
+egress-core = { path = "crates/egress-core", version = "0.1.0" }
+identity-core = { path = "crates/identity-core", version = "0.1.0" }
+observation-core = { path = "crates/observation-core", version = "0.1.0" }
+route-core = { path = "crates/route-core", version = "0.1.0" }
+verification-core = { path = "crates/verification-core", version = "0.1.0" }
+egress-runtime = { path = "crates/egress-runtime", version = "0.1.0" }
+socks5-adapter = { path = "crates/socks5-adapter", version = "0.1.0" }
+http-connect-adapter = { path = "crates/http-connect-adapter", version = "0.1.0" }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
-transport-core = { path = "crates/transport-core" }
-relay-adapter = { path = "crates/relay-adapter" }
-masque-adapter = { path = "crates/masque-adapter" }
-provider-core = { path = "crates/provider-core" }
-reference-provider-adapter = { path = "crates/reference-provider-adapter" }
+transport-core = { path = "crates/transport-core", version = "0.1.0" }
+relay-adapter = { path = "crates/relay-adapter", version = "0.1.0" }
+masque-adapter = { path = "crates/masque-adapter", version = "0.1.0" }
+provider-core = { path = "crates/provider-core", version = "0.1.0" }
+reference-provider-adapter = { path = "crates/reference-provider-adapter", version = "0.1.0" }
 thiserror = "2"
 proptest = "1"
 

@@ -1,33 +1,68 @@
-# Egress Runtime
+# Egrissa
 
-Policy-driven network identity and egress orchestration runtime.
+**Policy-driven network identity and egress orchestration for Rust.**
 
-## Current status
+Egrissa lets workloads declare the egress and identity properties they require instead of choosing a proxy or handling credentials. It plans an eligible route, establishes it through a transport boundary, records immutable evidence, verifies only what evidence supports, and applies explicit recovery without silently weakening policy.
+
+```text
+Desired != allocated != established != observed != verified
+```
+
+> [!WARNING]
+> Egrissa is pre-release software. It has a complete semantic kernel, deterministic fake runtime, and adapter contract suites, but it is not yet a production-ready managed egress service. See [Current maturity](#current-maturity) before adopting it.
 
 ---
 
-- M0 semantic kernel: complete.
-- M1 fake end-to-end runtime: complete.
-- No real network I/O. M2 introduces the SOCKS5 reference adapter.
+## Why Egrissa
+
+Network identity is a logical continuity contract, not an IP address. Egrissa keeps requirements, allocation, route establishment, observations, attribution, and verification separate so a weaker fact cannot be reported as a stronger one.
+
+It is intended for automation platforms, integration infrastructure, controlled crawlers, CI and network tests, privacy-sensitive clients, distributed agents, and geo or network behavior tests.
+
+Egrissa is not an anonymity product, an IP-rotation service, or a tool for circumventing destination access controls.
+
+---
+
+## Guarantees
+
+- **Fail closed.** `ProhibitDirect` is the default. Unsupported or ineligible routes fail before establishment rather than falling back to direct connectivity.
+- **Logical identities.** Identities have opaque IDs, lifetimes, scope, and independent generations. Continuity is explicit: `Preserved`, `Changed`, or `Unknown`.
+- **Evidence discipline.** Provider claims are inventory input, observations are not verification, and destination evidence cannot globally poison endpoint health.
+- **Safe concurrency.** One establishment owns each route generation, stale callbacks cannot mutate current state, and manager mutation locks are not held across network awaits.
+- **Credential boundaries.** Domain objects hold `CredentialRef` values, never credential material.
+- **Deterministic planning.** Planning and default route selection are deterministic. Bounded adaptive selection requires an explicit injected chooser.
+- **Explainable decisions.** Route intelligence records eligible candidates, exclusions, scoring inputs, selected route, and any deterministic fallback.
+
+---
 
 ## Workspace
 
+| Crate | Responsibility |
+| --- | --- |
+| `egress-core` | Requirements, policy, capabilities, IDs, and typed errors |
+| `identity-core` | Logical identity and continuity lifecycle |
+| `route-core` | Eligibility planning, topology, recovery, and deterministic route intelligence |
+| `observation-core` | Immutable observations, attribution, and health projection |
+| `verification-core` | Evidence-bound verification contracts |
+| `transport-core` | Transport-neutral establishment, tunnel, datagram, and packet contracts |
+| `egress-runtime` | Asynchronous orchestration and deterministic fake transport |
+| `socks5-adapter` | SOCKS5 TCP CONNECT adapter contract |
+| `http-connect-adapter` | HTTP CONNECT adapter contract, including TLS-to-proxy configuration |
+| `relay-adapter` | CONNECT relay client/server adapter contract with explicit forwarding policy |
+| `masque-adapter` | CONNECT-UDP and CONNECT-IP adapter contract with typed negotiation |
+| `provider-core` | Generic provider binding lifecycle and inventory publication |
+| `reference-provider-adapter` | Configurable generic provider-to-inventory adapter |
+
 ---
 
-```text
-crates/egress-core/        # Requirements, policy, capabilities, IDs, errors
-crates/identity-core/      # Network identity, continuity, lifecycle
-crates/route-core/         # Route planning, topology, lifecycle
-crates/observation-core/   # Immutable observations and health projection
-crates/verification-core/  # Evidence-bound verification contracts
-crates/transport-core/     # Transport-neutral async contracts
-crates/egress-runtime/     # Async orchestration and deterministic fake transport
-tests/                     # Integration and property tests
-```
+## Getting started
 
-## Validate
+### Prerequisites
 
----
+- Rust 1.85 or later
+- Cargo
+
+### Build and test
 
 ```sh
 cargo fmt --check
@@ -35,13 +70,40 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## Documents
+The repository uses Rust 2024 edition and resolver 3. Tests cover domain units, properties, deterministic fake-runtime acquisition, adapter contracts, lifecycle transitions, stale callbacks, recovery, and route intelligence.
 
 ---
 
-- `CRAFT.md` records the completed M0 handoff.
-- `CRAFT-M1.md` records the completed M1 requirements.
-- `docs/egress-runtime-v1-domain-spec.md` defines the domain model.
-- `docs/ARCHITECTURE.md` summarizes the architecture.
-- `docs/M0.md` defines the M0 milestone.
-- `docs/ROADMAP.md` lists milestones M0 through M7.
+## Documentation
+
+- [Product guide](docs/PRODUCT-GUIDE.md) - product model, supported surfaces, security guarantees, and maturity limits.
+- [Brand guide](docs/BRAND.md) - commercial naming rationale and clearance steps.
+- [Product requirements](docs/PRD.md) - product scope and success criteria.
+- [Domain model](docs/DOMAIN-MODEL.md) - canonical objects and lifecycle vocabulary.
+- [Architecture](docs/ARCHITECTURE.md) - control, data, and evidence planes.
+- [Invariants](docs/INVARIANTS.md) - non-negotiable semantics.
+- [Security](docs/SECURITY.md) - trust, credential, and abuse boundaries.
+- [Testing](docs/TESTING.md) - verification strategy and mandatory properties.
+- [Implementation report](IMPLEMENTATION-REPORT.md) - milestone-level implementation matrix.
+
+---
+
+## Current maturity
+
+The repository implements the M0 through M7 semantic, planning, adapter-contract, provider, and route-intelligence milestones. Before representing Egrissa as production-ready, maintainers must independently verify full runtime integration of concrete data-plane adapters and preserve the rule that an exit IP alone cannot prove logical identity continuity.
+
+Read the documentation as an engineering contract, not as a promise of a hosted service or anonymity guarantee.
+
+---
+
+## Releases and packages
+
+This repository currently uses a validation-only release workflow. A `v*` tag or manual workflow run checks formatting, linting, tests, package metadata, MIT licensing, and `cargo package` for every workspace member. It does not publish crates, create releases, or change versioning automatically.
+
+When a publishing policy is adopted, it must preserve the workspace's shared version and MSRV (`1.85`) and add explicit repository, homepage, documentation, and publishing ownership metadata before crates are released to a registry.
+
+---
+
+## License
+
+All source packages in this workspace are licensed under the [MIT License](LICENSE).
