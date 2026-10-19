@@ -99,37 +99,7 @@ impl EgressVerifier for EvidenceVerifier {
             let Some((_, latest_properties)) = latest else {
                 return VerificationOutcome::InsufficientEvidence;
             };
-            let continuity_evidence = evidence
-                .iter()
-                .filter_map(|observation| match &observation.outcome {
-                    Outcome::EgressObserved(value) => value
-                        .exit_address
-                        .map(|address| (observation.observed_at, observation.id, address)),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            let distinct_times = continuity_evidence
-                .iter()
-                .map(|(observed_at, _, _)| *observed_at)
-                .collect::<std::collections::BTreeSet<_>>();
-            let continuity = if continuity_evidence.len() >= 2
-                && distinct_times.len() >= 2
-                && latest_properties.exit_address.is_some()
-                && continuity_evidence
-                    .iter()
-                    .all(|(_, _, address)| Some(*address) == latest_properties.exit_address)
-                && subject
-                    .observations
-                    .iter()
-                    .filter(|observation| observation.key.route == subject.plan.id())
-                    .all(|observation| {
-                        observation.key.identity == subject.identity.id()
-                            && observation.key.identity_generation == subject.identity.generation()
-                    }) {
-                IdentityContinuity::Preserved
-            } else {
-                IdentityContinuity::Unknown
-            };
+            let continuity = IdentityContinuity::Unknown;
             let mut ids = evidence
                 .iter()
                 .map(|observation| observation.id)

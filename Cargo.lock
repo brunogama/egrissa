@@ -120,10 +120,14 @@ name = "egress-runtime"
 version = "0.1.0"
 dependencies = [
  "egress-core",
+ "http-connect-adapter",
  "identity-core",
+ "masque-adapter",
  "observation-core",
  "proptest",
+ "relay-adapter",
  "route-core",
+ "socks5-adapter",
  "tokio",
  "transport-core",
  "verification-core",

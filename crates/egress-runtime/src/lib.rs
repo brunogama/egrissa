@@ -21,13 +21,134 @@ use std::{
     time::Instant,
 };
 use tokio::sync::oneshot;
-use transport_core::{EstablishmentRequest, Transport, TransportFailure, TransportOutcome};
+use transport_core::{
+    CloseFuture, DataPlaneTransport, DataPlaneTunnel, EstablishmentRequest, Transport,
+    TransportFailure, TransportOutcome, Tunnel, TunnelTransport,
+};
 use verification_core::{EgressVerifier, VerificationOutcome, VerificationSubject, VerifiedEgress};
 
 pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> Instant;
 }
 
+pub struct TunnelTransportAdapter<T> {
+    adapter: Arc<T>,
+    tunnels: Arc<Mutex<HashMap<FeedbackKey, Box<dyn Tunnel>>>>,
+}
+
+impl<T> TunnelTransportAdapter<T> {
+    pub fn new(adapter: T) -> Self {
+        Self {
+            adapter: Arc::new(adapter),
+            tunnels: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl<T> Clone for TunnelTransportAdapter<T> {
+    fn clone(&self) -> Self {
+        Self {
+            adapter: Arc::clone(&self.adapter),
+            tunnels: Arc::clone(&self.tunnels),
+        }
+    }
+}
+
+impl<T: TunnelTransport> Transport for TunnelTransportAdapter<T> {
+    fn establish(&self, request: EstablishmentRequest) -> transport_core::EstablishmentFuture {
+        let key = request.plan.key();
+        let adapter = Arc::clone(&self.adapter);
+        let tunnels = Arc::clone(&self.tunnels);
+        Box::pin(async move {
+            match adapter.establish_tunnel(request).await {
+                Ok(tunnel) => {
+                    tunnels
+                        .lock()
+                        .expect("tunnel storage mutex poisoned")
+                        .insert(key, tunnel);
+                    TransportOutcome::Established
+                }
+                Err(failure) => TransportOutcome::Failed(failure),
+            }
+        })
+    }
+
+    fn close(&self, key: FeedbackKey) -> CloseFuture {
+        let tunnel = self
+            .tunnels
+            .lock()
+            .expect("tunnel storage mutex poisoned")
+            .remove(&key);
+        Box::pin(async move {
+            if let Some(tunnel) = tunnel {
+                let _ = tunnel.close().await;
+            }
+        })
+    }
+}
+
+pub struct DataPlaneTransportAdapter<T> {
+    adapter: Arc<T>,
+    tunnels: Arc<Mutex<HashMap<FeedbackKey, DataPlaneTunnel>>>,
+}
+
+impl<T> DataPlaneTransportAdapter<T> {
+    pub fn new(adapter: T) -> Self {
+        Self {
+            adapter: Arc::new(adapter),
+            tunnels: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl<T> Clone for DataPlaneTransportAdapter<T> {
+    fn clone(&self) -> Self {
+        Self {
+            adapter: Arc::clone(&self.adapter),
+            tunnels: Arc::clone(&self.tunnels),
+        }
+    }
+}
+
+impl<T: DataPlaneTransport> Transport for DataPlaneTransportAdapter<T> {
+    fn establish(&self, request: EstablishmentRequest) -> transport_core::EstablishmentFuture {
+        let key = request.plan.key();
+        let adapter = Arc::clone(&self.adapter);
+        let tunnels = Arc::clone(&self.tunnels);
+        Box::pin(async move {
+            match adapter.establish_data_plane(request).await {
+                Ok(establishment) => {
+                    tunnels
+                        .lock()
+                        .expect("data-plane tunnel storage mutex poisoned")
+                        .insert(key, establishment.tunnel);
+                    TransportOutcome::Established
+                }
+                Err(failure) => TransportOutcome::Failed(failure),
+            }
+        })
+    }
+
+    fn close(&self, key: FeedbackKey) -> CloseFuture {
+        let tunnel = self
+            .tunnels
+            .lock()
+            .expect("data-plane tunnel storage mutex poisoned")
+            .remove(&key);
+        Box::pin(async move {
+            if let Some(tunnel) = tunnel {
+                match tunnel {
+                    DataPlaneTunnel::Datagram(tunnel) => {
+                        let _ = tunnel.close().await;
+                    }
+                    DataPlaneTunnel::Packet(tunnel) => {
+                        let _ = tunnel.close().await;
+                    }
+                }
+            }
+        })
+    }
+}
 #[derive(Debug, Clone)]
 pub struct AcquireContext {
     pub request: EgressRequest,
@@ -234,10 +355,18 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
             match decision {
                 AcquireDecision::Reuse(lease) => {
                     let verification = control.verifications.get(&lease.plan.key()).cloned();
-                    return Ok(AcquiredLease {
-                        lease,
-                        verification,
-                    });
+                    if verification.is_some()
+                        || context.policy.verification != VerificationPolicy::RequireBeforeUse
+                    {
+                        return Ok(AcquiredLease {
+                            lease,
+                            verification,
+                        });
+                    }
+                    let Some(pending) = control.pending.get_mut(&lease.plan.key()) else {
+                        return Err(RuntimeError::VerificationUnavailable);
+                    };
+                    pending.waiters.push(sender);
                 }
                 AcquireDecision::Reject(error) => {
                     control.events.push(RuntimeEvent::AcquireRejected {

@@ -16,6 +16,10 @@ tokio.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+socks5-adapter.workspace = true
+http-connect-adapter.workspace = true
+relay-adapter.workspace = true
+masque-adapter.workspace = true
 
 [lints]
 workspace = true
