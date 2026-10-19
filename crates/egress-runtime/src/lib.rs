@@ -16,7 +16,7 @@ use route_core::{
     route::{RouteLease, RoutePlan},
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -267,6 +267,7 @@ struct ControlPlane {
     next_observation: u128,
     next_verification: u128,
     verifications: HashMap<FeedbackKey, VerifiedEgress>,
+    retained_transports: HashSet<FeedbackKey>,
     shutdown: bool,
 }
 
@@ -316,6 +317,7 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                     events: Vec::new(),
                     next_observation: 1,
                     next_verification: 1,
+                    retained_transports: HashSet::new(),
                     verifications: HashMap::new(),
                     shutdown: false,
                 }),
@@ -327,6 +329,34 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
     }
 
     pub async fn acquire(&self, context: AcquireContext) -> Result<AcquiredLease, RuntimeError> {
+        let expired_keys = {
+            let mut control = self
+                .inner
+                .control
+                .lock()
+                .expect("control plane mutex poisoned");
+            if control.shutdown {
+                return Err(RuntimeError::Shutdown);
+            }
+            let expired_routes = control.manager.expire_routes(context.now);
+            for route in &expired_routes {
+                control
+                    .events
+                    .push(RuntimeEvent::RouteExpired { route: *route });
+            }
+            let expired_keys = control
+                .retained_transports
+                .iter()
+                .filter(|key| expired_routes.contains(&key.route))
+                .copied()
+                .collect::<Vec<_>>();
+            for key in &expired_keys {
+                control.retained_transports.remove(key);
+            }
+            expired_keys
+        };
+        self.close_transport_keys(expired_keys).await;
+
         let (sender, receiver) = oneshot::channel();
         let mut owner_plan = None;
         {
@@ -342,9 +372,6 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                 && self.inner.verifier.is_none()
             {
                 return Err(RuntimeError::VerificationUnavailable);
-            }
-            for route in control.manager.expire_routes(context.now) {
-                control.events.push(RuntimeEvent::RouteExpired { route });
             }
             control.events.push(RuntimeEvent::AcquireStarted {
                 request: context.request.id,
@@ -414,7 +441,6 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
         }
         receiver.await.unwrap_or(Err(RuntimeError::Shutdown))
     }
-
     async fn establish(&self, mut plan: RoutePlan, mut context: AcquireContext) {
         loop {
             let key = plan.key();
@@ -455,6 +481,7 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                 })
                 .await;
             let now = self.inner.clock.now();
+            let retains_transport = !matches!(result, TransportOutcome::Failed(_));
             let (outcome, terminal_failure) = match result {
                 TransportOutcome::Established => (Outcome::Established, None),
                 TransportOutcome::EstablishedThenFailed(failure) => {
@@ -468,19 +495,22 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
             let failure_observation = terminal_failure.map(|failure| {
                 self.observation(key, &plan, failure_observation_outcome(failure), now)
             });
-            let complete = {
+            let complete = (|| {
                 let mut control = self
                     .inner
                     .control
                     .lock()
                     .expect("control plane mutex poisoned");
+                if retains_transport {
+                    control.retained_transports.insert(key);
+                }
                 if control.shutdown {
                     self.settle_locked(&mut control, key, Err(RuntimeError::Shutdown));
-                    return;
+                    return None;
                 }
                 if let Err(error) = control.manager.record_observation(observation.clone()) {
                     self.settle_locked(&mut control, key, Err(RuntimeError::Lifecycle(error)));
-                    return;
+                    return None;
                 }
                 control.events.push(RuntimeEvent::ObservationRecorded {
                     id: observation.id,
@@ -504,7 +534,7 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                                 key,
                                 Err(RuntimeError::Lifecycle(error)),
                             );
-                            return;
+                            return None;
                         }
                         control
                             .events
@@ -521,15 +551,22 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                         EstablishmentResult::Failed
                     }
                 };
-                control.manager.complete(key, state, now)
+                Some(control.manager.complete(key, state, now))
+            })();
+            let Some(complete) = complete else {
+                self.close_retained_transport(key).await;
+                return;
             };
             if let Err(error) = complete {
-                let mut control = self
-                    .inner
-                    .control
-                    .lock()
-                    .expect("control plane mutex poisoned");
-                self.settle_locked(&mut control, key, Err(RuntimeError::Lifecycle(error)));
+                {
+                    let mut control = self
+                        .inner
+                        .control
+                        .lock()
+                        .expect("control plane mutex poisoned");
+                    self.settle_locked(&mut control, key, Err(RuntimeError::Lifecycle(error)));
+                }
+                self.close_retained_transport(key).await;
                 return;
             }
             match result {
@@ -575,14 +612,18 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                 }
                 TransportOutcome::EstablishedThenFailed(failure) => {
                     if let Err(error) = self.record_egress_observations(&plan, &context) {
-                        let mut control = self
-                            .inner
-                            .control
-                            .lock()
-                            .expect("control plane mutex poisoned");
-                        self.settle_locked(&mut control, key, Err(error));
+                        {
+                            let mut control = self
+                                .inner
+                                .control
+                                .lock()
+                                .expect("control plane mutex poisoned");
+                            self.settle_locked(&mut control, key, Err(error));
+                        }
+                        self.close_retained_transport(key).await;
                         return;
                     }
+                    self.close_retained_transport(key).await;
                     match self.recover_plan(&plan, context) {
                         Some((replacement, next_context)) => {
                             plan = replacement;
@@ -925,6 +966,25 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
         }
     }
 
+    async fn close_transport_keys(&self, keys: Vec<FeedbackKey>) {
+        for key in keys {
+            self.inner.transport.close(key).await;
+        }
+    }
+
+    async fn close_retained_transport(&self, key: FeedbackKey) {
+        let should_close = self
+            .inner
+            .control
+            .lock()
+            .expect("control plane mutex poisoned")
+            .retained_transports
+            .remove(&key);
+        if should_close {
+            self.inner.transport.close(key).await;
+        }
+    }
+
     pub fn record_observation(&self, observation: Observation) -> Result<(), RuntimeError> {
         let mut control = self
             .inner
@@ -987,21 +1047,34 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
     }
 
     pub fn shutdown(&self) {
-        let mut control = self
-            .inner
-            .control
-            .lock()
-            .expect("control plane mutex poisoned");
-        if control.shutdown {
-            return;
-        }
-        control.shutdown = true;
-        control.events.push(RuntimeEvent::Shutdown);
-        let pending = std::mem::take(&mut control.pending);
+        let (pending, retained_transports) = {
+            let mut control = self
+                .inner
+                .control
+                .lock()
+                .expect("control plane mutex poisoned");
+            if control.shutdown {
+                return;
+            }
+            control.shutdown = true;
+            control.events.push(RuntimeEvent::Shutdown);
+            let pending = std::mem::take(&mut control.pending);
+            let retained_transports: Vec<_> = std::mem::take(&mut control.retained_transports)
+                .into_iter()
+                .collect();
+            (pending, retained_transports)
+        };
         for (_, entry) in pending {
             for waiter in entry.waiters {
                 let _ = waiter.send(Err(RuntimeError::Shutdown));
             }
         }
+        if retained_transports.is_empty() {
+            return;
+        }
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            runtime.close_transport_keys(retained_transports).await;
+        });
     }
 }
