@@ -98,9 +98,9 @@ Read the documentation as an engineering contract, not as a promise of a hosted 
 
 ## Releases and packages
 
-This repository currently uses a validation-only release workflow. A `v*` tag or manual workflow run checks formatting, linting, tests, package metadata, MIT licensing, and `cargo package` for every workspace member. It does not publish crates, create releases, or change versioning automatically.
+A push to `main` calculates release significance from Conventional Commits. A release-producing change must update the shared workspace version to the calculated SemVer value. The workflow then tags that merged content, creates GitHub release notes from merged pull requests, and uploads native `egrissa` binaries for macOS, Windows, and Linux. It never publishes crates to a registry.
 
-When a publishing policy is adopted, it must preserve the workspace's shared version and MSRV (`1.85`) and add explicit repository, homepage, documentation, and publishing ownership metadata before crates are released to a registry.
+Source packages retain a shared version and MSRV (`1.85`). Registry publishing, if adopted, must add explicit repository, homepage, documentation, and publishing-ownership metadata before crates are released.
 
 ---
 
