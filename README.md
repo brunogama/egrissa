@@ -90,7 +90,16 @@ The repository uses Rust 2024 edition and resolver 3. Tests cover domain units, 
 
 ## Current maturity
 
-The repository implements the M0 through M7 semantic, planning, adapter-contract, provider, and route-intelligence milestones. Before representing Egrissa as production-ready, maintainers must independently verify full runtime integration of concrete data-plane adapters and preserve the rule that an exit IP alone cannot prove logical identity continuity.
+The repository implements M0 through M7 semantic, planning, adapter-contract, provider, and route-intelligence milestones. It remains pre-release software: use this table to keep public claims aligned with repository evidence.
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Semantic/runtime milestones | Implemented through M7 | [Implementation report](IMPLEMENTATION-REPORT.md), workspace crates, and tests |
+| Concrete adapter runtime integration | Present, but verify the relevant integration path before making a production claim | [`crates/egress-runtime/tests/transport_wrappers.rs`](crates/egress-runtime/tests/transport_wrappers.rs) |
+| Verification safety | Required-verification reuse and continuity-evidence regressions are covered | [`crates/egress-runtime/tests/verification_safety.rs`](crates/egress-runtime/tests/verification_safety.rs) |
+| CLI | Help/version distribution entry point only | [`crates/egrissa-cli/src/main.rs`](crates/egrissa-cli/src/main.rs) |
+| Deployment or hosted service | Not present in the tracked repository | No tracked deployment or infrastructure configuration |
+| Documentation baseline | Requires reconciliation before release claims | Tracked docs conflict with untracked and deleted working-tree documentation |
 
 Read the documentation as an engineering contract, not as a promise of a hosted service or anonymity guarantee.
 
