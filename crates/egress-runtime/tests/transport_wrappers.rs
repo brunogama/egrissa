@@ -42,14 +42,21 @@ use socks5_adapter::{
 };
 use std::{
     net::SocketAddr,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
-use transport_core::Transport;
+use transport_core::{
+    DataPlaneEstablishment, DataPlaneEstablishmentFuture, DataPlaneTransport, DataPlaneTunnel,
+    DatagramTunnel, EstablishmentRequest, Transport, Tunnel, TunnelCloseFuture,
+    TunnelEstablishmentFuture, TunnelReadFuture, TunnelTransport, TunnelWriteFuture,
+};
 use verification_core::EvidenceVerifier;
 
 #[derive(Clone, Copy)]
@@ -292,6 +299,172 @@ fn context(now: Instant) -> AcquireContext {
     }
 }
 
+struct CloseProbe {
+    closes: AtomicUsize,
+}
+
+impl CloseProbe {
+    fn count(&self) -> usize {
+        self.closes.load(Ordering::SeqCst)
+    }
+}
+
+struct ClosingTunnel {
+    probe: Arc<CloseProbe>,
+}
+
+impl Tunnel for ClosingTunnel {
+    fn read(&mut self, _maximum: usize) -> TunnelReadFuture<'_> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn write(&mut self, bytes: Vec<u8>) -> TunnelWriteFuture<'_> {
+        Box::pin(async move { Ok(bytes.len()) })
+    }
+
+    fn close(self: Box<Self>) -> TunnelCloseFuture {
+        let probe = Arc::clone(&self.probe);
+        Box::pin(async move {
+            probe.closes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+    }
+}
+
+struct ClosingTunnelTransport {
+    probe: Arc<CloseProbe>,
+}
+
+impl TunnelTransport for ClosingTunnelTransport {
+    fn establish_tunnel(&self, _request: EstablishmentRequest) -> TunnelEstablishmentFuture {
+        let probe = Arc::clone(&self.probe);
+        Box::pin(async move { Ok(Box::new(ClosingTunnel { probe }) as Box<dyn Tunnel>) })
+    }
+}
+
+struct ClosingDatagramTunnel {
+    probe: Arc<CloseProbe>,
+}
+
+impl DatagramTunnel for ClosingDatagramTunnel {
+    fn send(&mut self, datagram: Vec<u8>) -> TunnelWriteFuture<'_> {
+        Box::pin(async move { Ok(datagram.len()) })
+    }
+
+    fn receive(&mut self, _maximum: usize) -> TunnelReadFuture<'_> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn close(self: Box<Self>) -> TunnelCloseFuture {
+        let probe = Arc::clone(&self.probe);
+        Box::pin(async move {
+            probe.closes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+    }
+}
+
+struct ClosingDataPlaneTransport {
+    probe: Arc<CloseProbe>,
+}
+
+impl DataPlaneTransport for ClosingDataPlaneTransport {
+    type Negotiation = ();
+
+    fn establish_data_plane(
+        &self,
+        _request: EstablishmentRequest,
+    ) -> DataPlaneEstablishmentFuture<Self::Negotiation> {
+        let probe = Arc::clone(&self.probe);
+        Box::pin(async move {
+            Ok(DataPlaneEstablishment {
+                tunnel: DataPlaneTunnel::Datagram(Box::new(ClosingDatagramTunnel { probe })),
+                negotiation: (),
+            })
+        })
+    }
+}
+
+async fn assert_expiry_closes_retained_tunnel<T: Transport>(transport: T, probe: Arc<CloseProbe>) {
+    let now = Instant::now();
+    let runtime =
+        EgressRuntime::with_verifier(transport, TestClock(now), Arc::new(EvidenceVerifier));
+    let lease = runtime.acquire(context(now)).await.unwrap();
+    let mut expired = context(lease.lease.plan.expires_at());
+    expired.identity = context(now).identity;
+
+    assert!(runtime.acquire(expired).await.is_err());
+    assert_eq!(probe.count(), 1);
+}
+
+async fn assert_shutdown_closes_retained_tunnel<T: Transport>(
+    transport: T,
+    probe: Arc<CloseProbe>,
+) {
+    let now = Instant::now();
+    let runtime =
+        EgressRuntime::with_verifier(transport, TestClock(now), Arc::new(EvidenceVerifier));
+    runtime.acquire(context(now)).await.unwrap();
+
+    runtime.shutdown();
+    for _ in 0..16 {
+        if probe.count() == 1 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    runtime.shutdown();
+
+    assert_eq!(probe.count(), 1);
+}
+
+#[tokio::test]
+async fn tunnel_transport_adapter_closes_retained_tunnel_on_expiry() {
+    let probe = Arc::new(CloseProbe {
+        closes: AtomicUsize::new(0),
+    });
+    let transport = TunnelTransportAdapter::new(ClosingTunnelTransport {
+        probe: Arc::clone(&probe),
+    });
+
+    assert_expiry_closes_retained_tunnel(transport, probe).await;
+}
+
+#[tokio::test]
+async fn data_plane_transport_adapter_closes_retained_tunnel_on_expiry() {
+    let probe = Arc::new(CloseProbe {
+        closes: AtomicUsize::new(0),
+    });
+    let transport = DataPlaneTransportAdapter::new(ClosingDataPlaneTransport {
+        probe: Arc::clone(&probe),
+    });
+
+    assert_expiry_closes_retained_tunnel(transport, probe).await;
+}
+
+#[tokio::test]
+async fn tunnel_transport_adapter_closes_retained_tunnel_on_shutdown() {
+    let probe = Arc::new(CloseProbe {
+        closes: AtomicUsize::new(0),
+    });
+    let transport = TunnelTransportAdapter::new(ClosingTunnelTransport {
+        probe: Arc::clone(&probe),
+    });
+
+    assert_shutdown_closes_retained_tunnel(transport, probe).await;
+}
+
+#[tokio::test]
+async fn data_plane_transport_adapter_closes_retained_tunnel_on_shutdown() {
+    let probe = Arc::new(CloseProbe {
+        closes: AtomicUsize::new(0),
+    });
+    let transport = DataPlaneTransportAdapter::new(ClosingDataPlaneTransport {
+        probe: Arc::clone(&probe),
+    });
+
+    assert_shutdown_closes_retained_tunnel(transport, probe).await;
+}
 async fn read_exact(stream: &mut tokio::net::TcpStream, length: usize) -> Vec<u8> {
     let mut bytes = vec![0; length];
     stream.read_exact(&mut bytes).await.unwrap();
