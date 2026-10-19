@@ -267,7 +267,9 @@ impl DeterministicPlanner {
                                 && capabilities[index].transport.http_connect
                         }
                         TopologyKind::Socks5 => transport != Transport::Ip,
-                        _ => true,
+                        TopologyKind::Relay
+                        | TopologyKind::RelayThenSocks5
+                        | TopologyKind::TwoRelaysThenSocks5 => transport == Transport::Tcp,
                     })
             })?;
         if context.policy.routing.distinct_operators

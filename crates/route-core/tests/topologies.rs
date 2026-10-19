@@ -112,3 +112,66 @@ fn chooser_only_selects_among_best_rank_candidates() {
         }
     );
 }
+
+#[test]
+fn relay_topologies_reject_udp_before_establishment() {
+    let now = Instant::now();
+    let mut req = request();
+    req.transport = egress_core::request::TransportRequirement::Udp;
+    let policy = EgressPolicy::default();
+    let id = identity(now);
+    let health = ObservationSnapshot::default();
+    let inv = inventory(now);
+
+    assert!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&req, &policy, &id, &inv, &health, now),
+                &mut FirstCandidate,
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn relay_planning_rejects_same_operator_hops_when_separation_is_required() {
+    let now = Instant::now();
+    let req = request();
+    let mut policy = EgressPolicy::default();
+    policy.routing.distinct_operators = true;
+    let id = identity(now);
+    let health = ObservationSnapshot::default();
+    let mut inv = inventory(now);
+    inv.endpoints[0].capabilities.topology.supported =
+        vec![TopologyKind::RelayThenSocks5, TopologyKind::Socks5];
+    let mut gateway = inv.endpoints[0].clone();
+    gateway.id = EndpointId(2);
+    inv.endpoints.push(gateway);
+    inv.upstreams.push(UpstreamBinding {
+        id: UpstreamBindingId(1),
+        operator: OperatorId(2),
+        provider: ProviderId(1),
+        available: true,
+        destinations: DestinationEligibility::Any,
+        capabilities: capabilities(),
+        valid_until: None,
+        credential: None,
+    });
+    inv.candidates = vec![Candidate {
+        topology: RouteTopology::RelayThenSocks5 {
+            relay: EndpointId(1),
+            gateway: EndpointId(2),
+            upstream: UpstreamBindingId(1),
+        },
+        rank: 0,
+    }];
+
+    assert!(
+        DeterministicPlanner::default()
+            .plan(
+                &context(&req, &policy, &id, &inv, &health, now),
+                &mut FirstCandidate,
+            )
+            .is_err()
+    );
+}

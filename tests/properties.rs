@@ -73,7 +73,7 @@ proptest! {
         inv.endpoints[0].capabilities.transport = TransportCapabilities { tcp, udp, ip, ..Default::default() };
         req.transport = [TransportRequirement::Tcp, TransportRequirement::Udp, TransportRequirement::Ip][required as usize];
         let result = DeterministicPlanner::default().plan(&context(&req, &policy, &id, &inv, &health, now), &mut FirstCandidate);
-        prop_assert_eq!(result.is_ok(), [tcp, udp, ip][required as usize]);
+        prop_assert_eq!(result.is_ok(), tcp && required == 0);
     }
     #[test]
     fn identity_replacement_cannot_report_preserved(new_id in 2u128..=u128::MAX, continuity in 0u8..3) {
