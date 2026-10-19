@@ -350,6 +350,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider-core"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "proptest",
+ "route-core",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -412,6 +421,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
 dependencies = [
  "rand_core",
+]
+
+[[package]]
+name = "reference-provider-adapter"
+version = "0.1.0"
+dependencies = [
+ "egress-core",
+ "identity-core",
+ "observation-core",
+ "provider-core",
+ "route-core",
 ]
 
 [[package]]

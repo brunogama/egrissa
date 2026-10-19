@@ -11,6 +11,8 @@ members = [
     "crates/http-connect-adapter",
     "crates/relay-adapter",
     "crates/masque-adapter",
+    "crates/provider-core",
+    "crates/reference-provider-adapter",
 ]
 resolver = "3"
 
@@ -32,6 +34,8 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] 
 transport-core = { path = "crates/transport-core" }
 relay-adapter = { path = "crates/relay-adapter" }
 masque-adapter = { path = "crates/masque-adapter" }
+provider-core = { path = "crates/provider-core" }
+reference-provider-adapter = { path = "crates/reference-provider-adapter" }
 thiserror = "2"
 proptest = "1"
 
