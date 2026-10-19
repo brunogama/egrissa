@@ -1,4 +1,8 @@
-use crate::{route::RoutePlan, topology::RouteTopology};
+use crate::{
+    intelligence::{RouteDecisionRecord, RouteIntelligence, decide},
+    route::RoutePlan,
+    topology::RouteTopology,
+};
 use egress_core::{capability::*, error::PlanningError, ids::*, policy::*, request::*};
 use identity_core::identity::NetworkIdentity;
 use observation_core::ObservationSnapshot;
@@ -77,6 +81,12 @@ pub trait RoutePlanner {
         chooser: &mut impl CandidateChooser,
     ) -> Result<RoutePlan, PlanningError>;
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedRouteDecision {
+    pub plan: RoutePlan,
+    pub record: RouteDecisionRecord,
+}
 #[derive(Debug, Clone)]
 pub struct DeterministicPlanner {
     pub supported_topologies: Vec<TopologyKind>,
@@ -100,6 +110,66 @@ impl RoutePlanner for DeterministicPlanner {
         context: &PlanContext<'_>,
         chooser: &mut impl CandidateChooser,
     ) -> Result<RoutePlan, PlanningError> {
+        self.legacy_plan(context, chooser)
+    }
+}
+
+impl DeterministicPlanner {
+    pub fn plan_with_decision(
+        &self,
+        context: &PlanContext<'_>,
+        intelligence: &RouteIntelligence,
+        chooser: &mut impl CandidateChooser,
+    ) -> Result<PlannedRouteDecision, PlanningError> {
+        let eligible = self.eligible(context)?;
+        let inputs = eligible
+            .iter()
+            .map(|(candidate, _)| intelligence.input_for(&candidate.topology, candidate.rank))
+            .collect::<Vec<_>>();
+        let record = decide(
+            context.request.destination.key,
+            context.now,
+            &inputs,
+            intelligence.policy,
+            chooser,
+        );
+        let topology = record
+            .selected
+            .as_ref()
+            .ok_or(PlanningError::NoEligibleCandidate)?;
+        let plan = eligible
+            .into_iter()
+            .find_map(|(_, plan)| (plan.topology() == topology).then_some(plan))
+            .ok_or(PlanningError::NoEligibleCandidate)?;
+        Ok(PlannedRouteDecision { plan, record })
+    }
+
+    fn legacy_plan(
+        &self,
+        context: &PlanContext<'_>,
+        chooser: &mut impl CandidateChooser,
+    ) -> Result<RoutePlan, PlanningError> {
+        let mut eligible = self.eligible(context)?;
+        let best = eligible
+            .first()
+            .ok_or(PlanningError::NoEligibleCandidate)?
+            .0
+            .rank;
+        let count = eligible
+            .iter()
+            .take_while(|candidate| candidate.0.rank == best)
+            .count();
+        let index = chooser.choose(count);
+        if index >= count {
+            return Err(PlanningError::InvalidChoice { index, count });
+        }
+        Ok(eligible.remove(index).1)
+    }
+
+    fn eligible(
+        &self,
+        context: &PlanContext<'_>,
+    ) -> Result<Vec<(Candidate, RoutePlan)>, PlanningError> {
         validate_context(context)?;
         if !identity_compatible(context) {
             return Err(PlanningError::IncompatibleIdentity);
@@ -108,30 +178,24 @@ impl RoutePlanner for DeterministicPlanner {
             .now
             .checked_add(context.policy.routing.maximum_lifetime)
             .ok_or(PlanningError::TimeOverflow)?;
-        let mut eligible: Vec<_> = context
+        let mut eligible = context
             .inventory
             .candidates
             .iter()
             .filter_map(|candidate| {
                 self.evaluate(context, candidate, maximum_expiry)
-                    .map(|plan| (candidate.rank, plan))
+                    .map(|plan| (candidate.clone(), plan))
             })
-            .collect();
-        eligible.sort_by(|a, b| (a.0, &a.1.topology).cmp(&(b.0, &b.1.topology)));
-        eligible.dedup_by(|a, b| a.1.topology == b.1.topology);
-        let best = eligible
-            .first()
-            .ok_or(PlanningError::NoEligibleCandidate)?
-            .0;
-        let count = eligible
-            .iter()
-            .take_while(|candidate| candidate.0 == best)
-            .count();
-        let index = chooser.choose(count);
-        if index >= count {
-            return Err(PlanningError::InvalidChoice { index, count });
+            .collect::<Vec<_>>();
+        eligible.sort_by(|left, right| {
+            (left.0.rank, &left.1.topology).cmp(&(right.0.rank, &right.1.topology))
+        });
+        eligible.dedup_by(|left, right| left.1.topology == right.1.topology);
+        if eligible.is_empty() {
+            Err(PlanningError::NoEligibleCandidate)
+        } else {
+            Ok(eligible)
         }
-        Ok(eligible.remove(index).1)
     }
 }
 

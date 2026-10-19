@@ -34,3 +34,7 @@ path = "../../tests/recovery.rs"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "route_intelligence"
+path = "../../tests/route_intelligence.rs"
