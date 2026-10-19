@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/egress-core", "crates/identity-core", "crates/route-core", "crates/observation-core", "crates/verification-core", "crates/transport-core", "crates/egress-runtime", "crates/socks5-adapter"]
+members = ["crates/egress-core", "crates/identity-core", "crates/route-core", "crates/observation-core", "crates/verification-core", "crates/transport-core", "crates/egress-runtime", "crates/socks5-adapter", "crates/http-connect-adapter"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ route-core = { path = "crates/route-core" }
 verification-core = { path = "crates/verification-core" }
 egress-runtime = { path = "crates/egress-runtime" }
 socks5-adapter = { path = "crates/socks5-adapter" }
+http-connect-adapter = { path = "crates/http-connect-adapter" }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
 transport-core = { path = "crates/transport-core" }
 thiserror = "2"
