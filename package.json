@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "batch": "export PATH=${CARGO_HOME:-$HOME/.cargo}/bin:/opt/homebrew/bin:$PATH; cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+  },
+  "dependencies": {
+    "@arizeai/openinference-core": "^2.8.0",
+    "@arizeai/phoenix-otel": "^2.2.0"
+  }
+}
