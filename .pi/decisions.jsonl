@@ -1,0 +1,1 @@
+{"decision":"Repository agent skills must be usable in Claude and Codex as well as Pi.","id":"D-0001","key":"m00120","rationale":"The user requires cross-harness agent-skill portability.","recorded_at":"2026-10-20T13:13:44Z","schema":1,"scope":"repository agent skills","source":"user","status":"active","supersedes":[],"tags":["agents","claude","codex","portability"]}
