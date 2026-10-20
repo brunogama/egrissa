@@ -407,14 +407,6 @@ async fn assert_shutdown_closes_retained_tunnel<T: Transport>(
     runtime.acquire(context(now)).await.unwrap();
 
     runtime.shutdown().await;
-    for _ in 0..16 {
-        if probe.count() == 1 {
-            break;
-        }
-        tokio::task::yield_now().await;
-    }
-    runtime.shutdown().await;
-
     assert_eq!(probe.count(), 1);
 }
 

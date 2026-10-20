@@ -84,13 +84,13 @@ jobs:
           rustup component add --toolchain 1.85.0 rustfmt clippy
       - name: Select Rust 1.85
         run: rustup override set 1.85.0
-      - name: Verify release source and package contents
+      - name: Verify release source
         run: |
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          # Internal workspace crates are not published to crates.io yet.
-          cargo package --workspace --list
+      - name: List release package contents
+        run: cargo package --workspace --list
   release:
     name: Tag and publish release notes
     needs: [plan, validate]
