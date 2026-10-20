@@ -62,10 +62,13 @@ impl<T: TunnelTransport> Transport for TunnelTransportAdapter<T> {
         Box::pin(async move {
             match adapter.establish_tunnel(request).await {
                 Ok(tunnel) => {
-                    tunnels
+                    let displaced = tunnels
                         .lock()
                         .expect("tunnel storage mutex poisoned")
                         .insert(key, tunnel);
+                    if let Some(tunnel) = displaced {
+                        let _ = tunnel.close().await;
+                    }
                     TransportOutcome::Established
                 }
                 Err(failure) => TransportOutcome::Failed(failure),
@@ -118,10 +121,20 @@ impl<T: DataPlaneTransport> Transport for DataPlaneTransportAdapter<T> {
         Box::pin(async move {
             match adapter.establish_data_plane(request).await {
                 Ok(establishment) => {
-                    tunnels
+                    let displaced = tunnels
                         .lock()
                         .expect("data-plane tunnel storage mutex poisoned")
                         .insert(key, establishment.tunnel);
+                    if let Some(tunnel) = displaced {
+                        match tunnel {
+                            DataPlaneTunnel::Datagram(tunnel) => {
+                                let _ = tunnel.close().await;
+                            }
+                            DataPlaneTunnel::Packet(tunnel) => {
+                                let _ = tunnel.close().await;
+                            }
+                        }
+                    }
                     TransportOutcome::Established
                 }
                 Err(failure) => TransportOutcome::Failed(failure),
@@ -390,7 +403,9 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                             verification,
                         });
                     }
-                    let Some(pending) = control.pending.get_mut(&lease.plan.key()) else {
+                    let key = lease.plan.key();
+                    control.events.push(RuntimeEvent::RoutePending { key });
+                    let Some(pending) = control.pending.get_mut(&key) else {
                         return Err(RuntimeError::VerificationUnavailable);
                     };
                     pending.waiters.push(sender);
@@ -581,17 +596,17 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                         return;
                     }
                     let verification = self.verify(&plan, &context).await;
-                    let mut control = self
-                        .inner
-                        .control
-                        .lock()
-                        .expect("control plane mutex poisoned");
-                    if control.shutdown {
-                        self.settle_locked(&mut control, key, Err(RuntimeError::Shutdown));
-                        return;
-                    }
                     match verification {
                         Ok(verification) => {
+                            let mut control = self
+                                .inner
+                                .control
+                                .lock()
+                                .expect("control plane mutex poisoned");
+                            if control.shutdown {
+                                self.settle_locked(&mut control, key, Err(RuntimeError::Shutdown));
+                                return;
+                            }
                             let lease = RouteLease { plan: plan.clone() };
                             control.events.push(RuntimeEvent::LeaseIssued {
                                 key,
@@ -606,7 +621,37 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                                 }),
                             );
                         }
-                        Err(error) => self.settle_locked(&mut control, key, Err(error)),
+                        Err(error) => {
+                            {
+                                let mut control = self
+                                    .inner
+                                    .control
+                                    .lock()
+                                    .expect("control plane mutex poisoned");
+                                if control.shutdown {
+                                    self.settle_locked(
+                                        &mut control,
+                                        key,
+                                        Err(RuntimeError::Shutdown),
+                                    );
+                                    return;
+                                }
+                                control.manager.fail_ready(key).expect(
+                                    "established route must remain ready during verification",
+                                );
+                                control
+                                    .manager
+                                    .remove_terminal(key)
+                                    .expect("failed route must be removable");
+                            }
+                            self.close_retained_transport(key).await;
+                            let mut control = self
+                                .inner
+                                .control
+                                .lock()
+                                .expect("control plane mutex poisoned");
+                            self.settle_locked(&mut control, key, Err(error));
+                        }
                     }
                     return;
                 }
@@ -1046,7 +1091,7 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
             .to_vec()
     }
 
-    pub fn shutdown(&self) {
+    pub async fn shutdown(&self) {
         let (pending, retained_transports) = {
             let mut control = self
                 .inner
@@ -1069,12 +1114,6 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                 let _ = waiter.send(Err(RuntimeError::Shutdown));
             }
         }
-        if retained_transports.is_empty() {
-            return;
-        }
-        let runtime = self.clone();
-        tokio::spawn(async move {
-            runtime.close_transport_keys(retained_transports).await;
-        });
+        self.close_transport_keys(retained_transports).await;
     }
 }

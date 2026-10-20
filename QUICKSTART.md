@@ -17,7 +17,7 @@ rustup component add --toolchain 1.85.0 rustfmt clippy
 rustup override set 1.85.0
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo test --workspace --all-targets
 ```
 
 ## Run the local command

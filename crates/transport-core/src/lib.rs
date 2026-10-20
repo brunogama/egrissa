@@ -21,7 +21,9 @@ pub enum TransportFailure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportOutcome {
     Established,
+    /// Establishment failed before the adapter retained an owned tunnel.
     Failed(TransportFailure),
+    /// Establishment yielded a tunnel before the adapter observed the terminal failure.
     EstablishedThenFailed(TransportFailure),
 }
 

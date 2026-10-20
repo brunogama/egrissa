@@ -78,12 +78,7 @@ The repository uses Rust 2024 edition and resolver 3. Tests cover domain units, 
 
 - [Product guide](docs/PRODUCT-GUIDE.md) - product model, supported surfaces, security guarantees, and maturity limits.
 - [Brand guide](docs/BRAND.md) - commercial naming rationale and clearance steps.
-- [Product requirements](docs/PRD.md) - product scope and success criteria.
-- [Domain model](docs/DOMAIN-MODEL.md) - canonical objects and lifecycle vocabulary.
 - [Architecture](docs/ARCHITECTURE.md) - control, data, and evidence planes.
-- [Invariants](docs/INVARIANTS.md) - non-negotiable semantics.
-- [Security](docs/SECURITY.md) - trust, credential, and abuse boundaries.
-- [Testing](docs/TESTING.md) - verification strategy and mandatory properties.
 - [Implementation report](IMPLEMENTATION-REPORT.md) - milestone-level implementation matrix.
 
 ---
@@ -99,7 +94,7 @@ The repository implements M0 through M7 semantic, planning, adapter-contract, pr
 | Verification safety | Required-verification reuse and continuity-evidence regressions are covered | [`crates/egress-runtime/tests/verification_safety.rs`](crates/egress-runtime/tests/verification_safety.rs) |
 | CLI | Help/version distribution entry point only | [`crates/egrissa-cli/src/main.rs`](crates/egrissa-cli/src/main.rs) |
 | Deployment or hosted service | Not present in the tracked repository | No tracked deployment or infrastructure configuration |
-| Documentation baseline | Requires reconciliation before release claims | Tracked docs conflict with untracked and deleted working-tree documentation |
+| Documentation baseline | Requires reconciliation before release claims | [`AGENTS.md`](AGENTS.md) milestone status lags the current workspace |
 
 Read the documentation as an engineering contract, not as a promise of a hosted service or anonymity guarantee.
 

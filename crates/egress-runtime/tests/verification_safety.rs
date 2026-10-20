@@ -11,7 +11,7 @@ use egress_core::{
     },
 };
 use egress_runtime::{
-    AcquireContext, Clock, EgressRuntime, RuntimeError,
+    AcquireContext, Clock, EgressRuntime, RuntimeError, RuntimeEvent,
     fake::{FakeTransport, ScriptedStep},
 };
 use identity_core::{
@@ -134,20 +134,23 @@ impl EgressVerifier for FailingVerifier {
 #[tokio::test]
 async fn require_before_use_reuse_after_failed_verification_fails_closed() {
     let now = Instant::now();
-    let runtime = EgressRuntime::with_verifier(
-        FakeTransport::new([ScriptedStep::Succeed]),
-        TestClock(now),
-        Arc::new(FailingVerifier),
-    );
+    let fake = FakeTransport::new([ScriptedStep::Succeed, ScriptedStep::Succeed]);
+    let runtime =
+        EgressRuntime::with_verifier(fake.clone(), TestClock(now), Arc::new(FailingVerifier));
 
     assert_eq!(
         runtime.acquire(context(now)).await,
         Err(RuntimeError::VerificationFailed)
     );
+    assert_eq!(runtime.state(RouteId(1)), None);
+    assert_eq!(fake.closes().len(), 1);
+
     assert_eq!(
         runtime.acquire(context(now)).await,
-        Err(RuntimeError::VerificationUnavailable)
+        Err(RuntimeError::VerificationFailed)
     );
+    assert_eq!(fake.establishments().len(), 2);
+    assert_eq!(fake.closes().len(), 2);
 }
 
 #[derive(Clone)]
@@ -217,6 +220,20 @@ fn context_with_evidence(now: Instant) -> AcquireContext {
     input
 }
 
+async fn wait_for_pending_reuse(runtime: &EgressRuntime<FakeTransport, TestClock>) {
+    for _ in 0..1_000 {
+        if runtime
+            .events()
+            .iter()
+            .any(|event| matches!(event, RuntimeEvent::RoutePending { .. }))
+        {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("second acquire did not join the pending verification");
+}
+
 #[tokio::test]
 async fn require_before_use_reuse_waits_for_pending_verification() {
     let now = Instant::now();
@@ -234,7 +251,7 @@ async fn require_before_use_reuse_waits_for_pending_verification() {
     let second_runtime = runtime.clone();
     let second =
         tokio::spawn(async move { second_runtime.acquire(context_with_evidence(now)).await });
-    tokio::task::yield_now().await;
+    wait_for_pending_reuse(&runtime).await;
     assert!(!second.is_finished());
 
     verifier.release();

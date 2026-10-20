@@ -399,10 +399,7 @@ async fn stale_verification_cannot_mutate_the_current_route() {
         runtime.acquire(input).await,
         Err(RuntimeError::VerificationUnavailable)
     );
-    assert_eq!(
-        runtime.state(RouteId(1)),
-        Some(route_core::lifecycle::RouteState::Ready)
-    );
+    assert_eq!(runtime.state(RouteId(1)), None);
     assert!(
         !runtime
             .observations()
@@ -613,7 +610,7 @@ async fn m1_25_shutdown_resolves_pending_waiters() {
         async move { runtime.acquire(context(now)).await }
     });
     tokio::task::yield_now().await;
-    runtime.shutdown();
+    runtime.shutdown().await;
     assert_eq!(owner.await.unwrap(), Err(RuntimeError::Shutdown));
     assert_eq!(waiter.await.unwrap(), Err(RuntimeError::Shutdown));
 }
