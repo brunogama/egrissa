@@ -636,13 +636,9 @@ impl<T: Transport, C: Clock> EgressRuntime<T, C> {
                                     );
                                     return;
                                 }
-                                control.manager.fail_ready(key).expect(
-                                    "established route must remain ready during verification",
-                                );
-                                control
-                                    .manager
-                                    .remove_terminal(key)
-                                    .expect("failed route must be removable");
+                                if control.manager.fail_ready(key).is_ok() {
+                                    let _ = control.manager.remove_terminal(key);
+                                }
                             }
                             self.close_retained_transport(key).await;
                             let mut control = self
