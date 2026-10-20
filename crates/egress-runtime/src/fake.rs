@@ -21,9 +21,9 @@ pub enum ScriptedStep {
 struct State {
     script: VecDeque<ScriptedStep>,
     establishments: Vec<FeedbackKey>,
+    closes: Vec<FeedbackKey>,
     waiting: usize,
 }
-
 struct Inner {
     state: Mutex<State>,
     gate: Semaphore,
@@ -57,6 +57,15 @@ impl FakeTransport {
             .lock()
             .expect("fake transport mutex poisoned")
             .establishments
+            .clone()
+    }
+
+    pub fn closes(&self) -> Vec<FeedbackKey> {
+        self.inner
+            .state
+            .lock()
+            .expect("fake transport mutex poisoned")
+            .closes
             .clone()
     }
 
@@ -115,7 +124,15 @@ impl Transport for FakeTransport {
         })
     }
 
-    fn close(&self, _key: FeedbackKey) -> CloseFuture {
-        Box::pin(async {})
+    fn close(&self, key: FeedbackKey) -> CloseFuture {
+        let fake = self.clone();
+        Box::pin(async move {
+            fake.inner
+                .state
+                .lock()
+                .expect("fake transport mutex poisoned")
+                .closes
+                .push(key);
+        })
     }
 }

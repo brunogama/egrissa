@@ -46,7 +46,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI installs Rust 1.85 plus `rustfmt` and `clippy` before running the same commands ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). `cargo package --workspace --allow-dirty --no-verify` checks package contents; `--no-verify` is intentional because workspace crates are not published to crates.io yet.
+CI installs Rust 1.85 plus `rustfmt` and `clippy` before running the same commands ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). `cargo package --workspace --list` validates package contents without attempting registry resolution for unpublished workspace crates.
 
 No secret, provider account, or local service is required for normal tests. `.env.local` is optional and ignored. Do not document or commit its values; [`.envrc`](.envrc) loads it only when present.
 
@@ -78,7 +78,7 @@ The three planes are documented in [`docs/PRODUCT-GUIDE.md`](docs/PRODUCT-GUIDE.
 
 - `NetworkIdentity` is logical continuity, not an IP address ([`crates/identity-core/src/identity.rs`](crates/identity-core/src/identity.rs)).
 - Route and identity generations are separate; stale feedback is rejected ([`tests/acquisition.rs`](tests/acquisition.rs)).
-- `RoutePlan` is immutable desired routing; a route lease is permission to use current state, not verification ([`docs/DOMAIN-MODEL.md`](docs/DOMAIN-MODEL.md), currently untracked in this checkout).
+- `RoutePlan` is immutable desired routing; a route lease is permission to use current state, not verification.
 - Domain objects use `CredentialRef`; adapter-local resolvers own secret material ([`docs/SECURITY.md`](docs/SECURITY.md), currently untracked in this checkout).
 - The provider adapter materializes generic `InventorySnapshot` data rather than injecting provider policy into the planner ([`crates/reference-provider-adapter/src/lib.rs`](crates/reference-provider-adapter/src/lib.rs)).
 
@@ -103,7 +103,7 @@ The PR policy workflow closes PRs whose author is not the repository owner. That
 
 ### Releases and changelog
 
-On `main`, [`release.yml`](.github/workflows/release.yml) calculates semantic significance from Conventional Commits. A release-producing change must update the shared workspace version to the calculated SemVer value. The workflow validates sources, creates an annotated tag and GitHub release notes, then uploads native CLI archives for Linux, macOS, and Windows. Generated GitHub release notes are the changelog mechanism; a tracked `CHANGELOG.md` is not present.
+On `main`, [`release.yml`](.github/workflows/release.yml) calculates semantic significance from Conventional Commits. A release-producing change must update the shared workspace version to the calculated SemVer value. The workflow runs formatting, lint, test, and package-content checks, creates an annotated tag and GitHub release notes, then uploads native CLI archives for Linux, macOS, and Windows. Generated GitHub release notes are the changelog mechanism; a tracked `CHANGELOG.md` is not present.
 
 ---
 
@@ -133,7 +133,7 @@ Use the public `EgressRuntime::acquire` seam and the fake/scripted transport in 
 
 ### Debug a failed quality gate
 
-Run the exact failed command first. If `cargo fmt` or `cargo clippy` is unavailable, install the Rust 1.85 `rustfmt` and `clippy` components as shown in [`QUICKSTART.md`](QUICKSTART.md). For package failures before publication, use the repository command with `--no-verify`; registry verification cannot resolve unpublished internal crates.
+Run the exact failed command first. If `cargo fmt` or `cargo clippy` is unavailable, install the Rust 1.85 `rustfmt` and `clippy` components as shown in [`QUICKSTART.md`](QUICKSTART.md). For package-content checks before publication, use `cargo package --workspace --list`; publish-style registry verification cannot resolve unpublished internal crates.
 
 ### Update a dependency
 
@@ -144,10 +144,9 @@ Edit the relevant root `[workspace.dependencies]` entry in [`Cargo.toml`](Cargo.
 ## Potential gotchas
 
 1. **Documentation drift exists.** `AGENTS.md` says M2 has not started, while tracked commits and crate directories include M2 through M7. Likewise, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) names planned crate names that do not match current `*-adapter` packages. Use `Cargo.toml` and current source as the execution inventory.
-2. **Some references are untracked or absent from committed history.** `README.md` links `docs/PRD.md`, `docs/DOMAIN-MODEL.md`, `docs/INVARIANTS.md`, `docs/SECURITY.md`, and `docs/TESTING.md`, but they appear as untracked working-tree files in the inspection. `docs/ROADMAP.md` and `docs/egress-runtime-v1-domain-spec.md` were deleted in the working tree despite being tracked at HEAD. Do not rely on their availability in a clean clone until this documentation state is reconciled.
-3. **The CLI is intentionally minimal.** It only prints help/version ([`crates/egrissa-cli/src/main.rs`](crates/egrissa-cli/src/main.rs)); it is not a proxy daemon or configuration frontend.
-4. **No production deployment exists.** No deployment/infrastructure files were found, and the product guide labels the project pre-release ([`README.md`](README.md)).
-5. **Adapter maturity must be checked from current tests.** The product guide previously warned that concrete runtime integration needed verification; current tracked runtime wrapper and verification-safety tests should be read before making a release claim.
+2. **Some historical references require reconciliation.** The committed README links only to tracked documentation, but `AGENTS.md` and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) should be checked against the workspace before making release claims.
+3. **No production deployment exists.** No deployment/infrastructure files were found, and the product guide labels the project pre-release ([`README.md`](README.md)).
+4. **Adapter maturity must be checked from current tests.** The product guide previously warned that concrete runtime integration needed verification; current tracked runtime wrapper and verification-safety tests should be read before making a release claim.
 6. **Secrets are local only.** `.env.local` and `.envrc` are ignored, and `prek` validates `.env` syntax and detects private keys ([`.gitignore`](.gitignore), [`prek.toml`](prek.toml)). Never include values in examples or commits.
 
 ---

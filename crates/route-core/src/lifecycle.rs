@@ -222,6 +222,22 @@ impl RouteManager {
         };
         Ok(())
     }
+    /// Marks an established route as failed when a mandatory post-establishment gate rejects it.
+    pub fn fail_ready(&mut self, key: FeedbackKey) -> Result<(), LifecycleError> {
+        let allocation = self
+            .routes
+            .get_mut(&key.route)
+            .ok_or(LifecycleError::StaleFeedback)?;
+        if allocation.plan.key() != key {
+            return Err(LifecycleError::StaleFeedback);
+        }
+        if allocation.state != RouteState::Ready {
+            return Err(LifecycleError::InvalidTransition);
+        }
+        allocation.state = RouteState::Failed;
+        Ok(())
+    }
+
     /// Continuity is an explicit assessment supplied by the host, never inferred from a status code.
     /// M0 has no verifier; a production host must obtain this assessment from verification.
     pub fn remove_terminal(&mut self, key: FeedbackKey) -> Result<(), LifecycleError> {
