@@ -6,6 +6,14 @@
 
 Policy-driven network identity and egress orchestration runtime. Rust 2024 workspace, edition 2024, resolver 3.
 
+## Default agent mode
+
+---
+
+- Default mode: OpenAI Terra Medium.
+- Always load and apply the governing project principles in the `Read first` sequence before planning or changing code; do not skip ahead or reorder them.
+- Do not block on human input when the repository, specifications, and invariants allow a safe, deterministic decision. Investigate, make the best defensible choice, record any material assumption, and proceed. Ask only when an answer requires unavailable authority, credentials, or an irreversible decision outside the documented constraints.
+
 ## Read first
 
 ---
