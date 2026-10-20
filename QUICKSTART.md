@@ -1,41 +1,42 @@
-# Egrissa Quickstart
+# Egrissa quickstart
 
-This guide validates a fresh checkout. It does not require credentials, a database, a network service, or an external provider.
+Use this guide from a fresh checkout to build the current CLI and run the repository quality gate. It is based on [`Cargo.toml`](Cargo.toml) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Prerequisites
 
-- Rust **1.85** and Cargo. The workspace declares this MSRV in [`Cargo.toml`](Cargo.toml).
 - Git.
+- Rust **1.85** and Cargo. The workspace declares `rust-version = "1.85"`; it does not include a tracked `rust-toolchain.toml`.
+- The `rustfmt` and `clippy` Rust components.
 
-## Clone and validate
+## Clone, configure, and validate
 
 ```sh
-git clone git@github.com:brunogama/egrissa.git
+git clone <repository-url> egrissa
 cd egrissa
+
 rustup toolchain install 1.85.0 --profile minimal
 rustup component add --toolchain 1.85.0 rustfmt clippy
 rustup override set 1.85.0
+
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets
+cargo test --workspace
+cargo package --workspace --list
 ```
 
-## Run the local command
+The first three Cargo commands are the required workspace quality gate. CI additionally lists package contents. It intentionally does **not** run publish-style `cargo package` verification because the internal workspace crates are not published to crates.io yet.
+
+## Run the current local command
 
 ```sh
 cargo run --package egrissa-cli -- --help
 cargo run --package egrissa-cli -- --version
 ```
 
-The current CLI is a distribution entry point with help and version commands only. It does not start a proxy, make network connections, require secrets, or configure a managed service. See [`crates/egrissa-cli/src/main.rs`](crates/egrissa-cli/src/main.rs).
+The `egrissa` binary currently exposes help and version output only. It does not start a proxy or service, accept connection settings, or require runtime secrets; see [`crates/egrissa-cli/src/main.rs`](crates/egrissa-cli/src/main.rs).
 
-## Optional local environment loading
+## Configuration and limits
 
-No environment variables are required for the commands above. If a developer has a local `.env.local`, the ignored `.envrc` can load it when sourced:
+No tracked environment variable, database, external service, or local daemon is required for the commands above. [`.gitignore`](.gitignore) excludes `.env.local` and `.envrc`, but no repository-supplied environment loader is tracked; keep any local secret material out of Git.
 
-```sh
-if [ -f ./.envrc ]; then
-  . ./.envrc
-fi
-
-Do not commit `.env.local` or `.envrc`; both are ignored by [`.gitignore`](.gitignore).
+For architecture, adapter boundaries, and contribution guidance, continue with [`ONBOARDING.md`](ONBOARDING.md).
