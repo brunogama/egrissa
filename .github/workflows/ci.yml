@@ -57,5 +57,7 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-      - name: Verify package contents
-        run: cargo package --workspace --allow-dirty --no-verify
+      - name: List package contents
+        # Internal workspace crates are not on crates.io yet, so package
+        # verification cannot resolve their published dependency versions.
+        run: cargo package --workspace --list
