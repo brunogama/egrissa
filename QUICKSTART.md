@@ -34,7 +34,8 @@ The current CLI is a distribution entry point with help and version commands onl
 No environment variables are required for the commands above. If a developer has a local `.env.local`, the ignored `.envrc` can load it when sourced:
 
 ```sh
-. ./.envrc
-```
+if [ -f ./.envrc ]; then
+  . ./.envrc
+fi
 
 Do not commit `.env.local` or `.envrc`; both are ignored by [`.gitignore`](.gitignore).
